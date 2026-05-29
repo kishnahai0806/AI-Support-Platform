@@ -36,10 +36,10 @@ management:
         include: "*"
   endpoint:
     prometheus:
-      enabled: true
-  metrics:
-    export:
-      prometheus:
+      access: unrestricted
+  prometheus:
+    metrics:
+      export:
         enabled: true
 
 logging:
