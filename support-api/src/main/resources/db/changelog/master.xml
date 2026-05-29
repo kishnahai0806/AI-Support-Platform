@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <include file="db/changelog/v1.0.0/001-create-users.sql"/>
+    <include file="db/changelog/v1.0.0/002-create-tickets.sql"/>
+    <include file="db/changelog/v1.0.0/003-create-messages.sql"/>
+    <include file="db/changelog/v1.0.0/004-create-ai-audit.sql"/>
+    <include file="db/changelog/v1.0.0/005-create-refresh-tokens.sql"/>
+    <include file="db/changelog/v1.0.0/006-create-indexes.sql"/>
+
+</databaseChangeLog>
