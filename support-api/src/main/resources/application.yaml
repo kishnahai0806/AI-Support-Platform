@@ -1,3 +1,65 @@
 spring:
   application:
     name: support-api
+  profiles:
+    active: local
+  datasource:
+    url: jdbc:postgresql://postgres:5432/support_db
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    show-sql: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  data:
+    redis:
+      host: ${SPRING_REDIS_HOST}
+      port: ${SPRING_REDIS_PORT}
+  kafka:
+    bootstrap-servers: kafka:29092
+    consumer:
+      group-id: support-api-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+  liquibase:
+    enabled: true
+    change-log: classpath:db/changelog/master.xml
+
+server:
+  port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+  endpoint:
+    prometheus:
+      enabled: true
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+
+logging:
+  level:
+    root: INFO
+    com.krish.supportapi: DEBUG
+
+jwt:
+  secret: ${JWT_SECRET}
+  access-token-expiry-ms: ${JWT_ACCESS_EXPIRY_MS}
+  refresh-token-expiry-ms: ${JWT_REFRESH_EXPIRY_MS}
+
+openai:
+  api-key: ${OPENAI_API_KEY}
+  model: gpt-4o-mini
+  base-url: https://api.openai.com/v1
