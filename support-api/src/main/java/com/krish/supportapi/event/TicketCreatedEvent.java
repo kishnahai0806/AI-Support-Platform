@@ -1,6 +1,7 @@
 package com.krish.supportapi.event;
 
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import com.fasterxml.jackson.databind.annotation.JsonPOJOBuilder;
 import com.krish.supportapi.domain.enums.TicketCategory;
 import com.krish.supportapi.domain.enums.TicketPriority;
 import java.time.LocalDateTime;
@@ -34,4 +35,8 @@ public class TicketCreatedEvent {
     String customerEmail;
 
     LocalDateTime createdAt;
+
+    @JsonPOJOBuilder(withPrefix = "")
+    public static class TicketCreatedEventBuilder {
+    }
 }
