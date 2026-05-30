@@ -16,3 +16,5 @@ CREATE INDEX idx_ticket_messages_ticket_id ON public.ticket_messages(ticket_id);
 CREATE INDEX idx_ai_audit_ticket_id ON public.ai_response_audit(ticket_id);
 
 CREATE INDEX idx_ai_audit_created_at ON public.ai_response_audit(created_at DESC);
+
+CREATE INDEX idx_refresh_tokens_user_id ON public.refresh_tokens(user_id);
