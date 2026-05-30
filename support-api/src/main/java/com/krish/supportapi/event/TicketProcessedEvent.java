@@ -1,43 +1,43 @@
 package com.krish.supportapi.event;
 
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.krish.supportapi.domain.enums.TicketCategory;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.UUID;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.Value;
 
-@Data
-@NoArgsConstructor
+@Value
 @AllArgsConstructor
 @Builder
+@JsonDeserialize(builder = TicketProcessedEvent.TicketProcessedEventBuilder.class)
 public class TicketProcessedEvent {
 
-    private UUID eventId;
+    UUID eventId;
 
-    private UUID ticketId;
+    UUID ticketId;
 
-    private TicketCategory suggestedCategory;
+    TicketCategory suggestedCategory;
 
-    private BigDecimal confidenceScore;
+    BigDecimal confidenceScore;
 
-    private boolean aiEscalated;
+    boolean aiEscalated;
 
-    private String modelUsed;
+    String modelUsed;
 
-    private int promptTokens;
+    int promptTokens;
 
-    private int completionTokens;
+    int completionTokens;
 
-    private int totalTokens;
+    int totalTokens;
 
-    private long latencyMs;
+    long latencyMs;
 
-    private boolean success;
+    boolean success;
 
-    private String errorMessage;
+    String errorMessage;
 
-    private LocalDateTime processedAt;
+    LocalDateTime processedAt;
 }
