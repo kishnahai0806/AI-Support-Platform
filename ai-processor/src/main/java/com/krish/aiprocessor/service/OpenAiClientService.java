@@ -38,7 +38,10 @@ public class OpenAiClientService {
         TicketCategory category,
         BigDecimal confidenceScore,
         boolean shouldEscalate,
-        String reasoning
+        String reasoning,
+        int promptTokens,
+        int completionTokens,
+        int totalTokens
     ) {
     }
 
@@ -60,9 +63,15 @@ public class OpenAiClientService {
                 .bodyValue(requestBody)
                 .retrieve()
                 .bodyToMono(Map.class)
+                .retry(openAiProperties.getMaxRetries())
                 .block();
 
+            if (response == null) {
+                throw new IllegalStateException("OpenAI returned null response");
+            }
+
             String content = extractResponseContent(response);
+            int[] tokenUsage = extractTokenUsage(response);
 
             @SuppressWarnings("unchecked")
             Map<String, Object> classification = objectMapper.readValue(content, Map.class);
@@ -71,7 +80,10 @@ public class OpenAiClientService {
                 parseCategory(classification.get("category")),
                 parseConfidenceScore(classification.get("confidenceScore")),
                 parseShouldEscalate(classification.get("shouldEscalate")),
-                parseReasoning(classification.get("reasoning"))
+                parseReasoning(classification.get("reasoning")),
+                tokenUsage[0],
+                tokenUsage[1],
+                tokenUsage[2]
             );
         } catch (Exception exception) {
             log.error("Failed to classify ticket with OpenAI", exception);
@@ -86,7 +98,7 @@ public class OpenAiClientService {
     ) {
         return Map.of(
             "model", openAiProperties.getModel(),
-            "max_tokens", openAiProperties.getMaxTokens(),
+            "max_completion_tokens", openAiProperties.getMaxTokens(),
             "temperature", openAiProperties.getTemperature(),
             "messages", List.of(
                 Map.of(
@@ -145,6 +157,37 @@ public class OpenAiClientService {
         return message.get("content").toString();
     }
 
+    private int[] extractTokenUsage(Map<String, Object> response) {
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> usage = (Map<String, Object>) response.get("usage");
+            if (usage == null) {
+                return new int[]{0, 0, 0};
+            }
+            return new int[]{
+                parseIntOrZero(usage.get("prompt_tokens")),
+                parseIntOrZero(usage.get("completion_tokens")),
+                parseIntOrZero(usage.get("total_tokens"))
+            };
+        } catch (Exception exception) {
+            return new int[]{0, 0, 0};
+        }
+    }
+
+    private int parseIntOrZero(Object value) {
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        if (value == null) {
+            return 0;
+        }
+        try {
+            return Integer.parseInt(value.toString());
+        } catch (NumberFormatException exception) {
+            return 0;
+        }
+    }
+
     private TicketCategory parseCategory(Object category) {
         if (category == null) {
             return TicketCategory.GENERAL;
@@ -194,7 +237,8 @@ public class OpenAiClientService {
             TicketCategory.GENERAL,
             DEFAULT_CONFIDENCE_SCORE,
             false,
-            "Classification failed"
+            "Classification failed",
+            0, 0, 0
         );
     }
 }

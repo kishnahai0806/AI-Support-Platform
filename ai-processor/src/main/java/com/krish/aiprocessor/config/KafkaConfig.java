@@ -15,7 +15,7 @@ public class KafkaConfig {
     @Bean
     public ConcurrentKafkaListenerContainerFactory<String, String> kafkaListenerContainerFactory(
         ConsumerFactory<String, String> consumerFactory,
-        KafkaTemplate<Object, Object> kafkaTemplate
+        KafkaTemplate<String, String> kafkaTemplate
     ) {
         DeadLetterPublishingRecoverer recoverer = new DeadLetterPublishingRecoverer(kafkaTemplate);
         DefaultErrorHandler errorHandler = new DefaultErrorHandler(
