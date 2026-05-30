@@ -1,37 +1,37 @@
 package com.krish.supportapi.event;
 
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.krish.supportapi.domain.enums.TicketCategory;
 import com.krish.supportapi.domain.enums.TicketPriority;
 import java.time.LocalDateTime;
 import java.util.UUID;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.Value;
 
-@Data
-@NoArgsConstructor
+@Value
 @AllArgsConstructor
 @Builder
+@JsonDeserialize(builder = TicketCreatedEvent.TicketCreatedEventBuilder.class)
 public class TicketCreatedEvent {
 
-    private UUID eventId;
+    UUID eventId;
 
-    private UUID ticketId;
+    UUID ticketId;
 
-    private String ticketNumber;
+    String ticketNumber;
 
-    private String title;
+    String title;
 
-    private String description;
+    String description;
 
-    private TicketCategory category;
+    TicketCategory category;
 
-    private TicketPriority priority;
+    TicketPriority priority;
 
-    private UUID customerId;
+    UUID customerId;
 
-    private String customerEmail;
+    String customerEmail;
 
-    private LocalDateTime createdAt;
+    LocalDateTime createdAt;
 }

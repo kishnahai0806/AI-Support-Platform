@@ -2,6 +2,7 @@ package com.krish.supportapi.controller;
 
 import com.krish.supportapi.domain.dto.request.AssignTicketRequest;
 import com.krish.supportapi.domain.dto.request.CreateTicketRequest;
+import com.krish.supportapi.domain.dto.request.UpdateTicketPriorityRequest;
 import com.krish.supportapi.domain.dto.request.UpdateTicketStatusRequest;
 import com.krish.supportapi.domain.dto.response.TicketDetailResponse;
 import com.krish.supportapi.domain.dto.response.TicketResponse;
@@ -11,7 +12,6 @@ import com.krish.supportapi.domain.enums.TicketPriority;
 import com.krish.supportapi.domain.enums.TicketStatus;
 import com.krish.supportapi.service.TicketService;
 import jakarta.validation.Valid;
-import java.util.Map;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -116,18 +116,10 @@ public class TicketController {
     @PatchMapping("/{id}/priority")
     public ResponseEntity<TicketResponse> updatePriority(
         @PathVariable UUID id,
-        @RequestBody Map<String, String> body,
+        @Valid @RequestBody UpdateTicketPriorityRequest request,
         Authentication authentication
     ) {
-        TicketPriority priority;
-
-        try {
-            priority = TicketPriority.valueOf(body.get("priority"));
-        } catch (IllegalArgumentException | NullPointerException exception) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
-        }
-
-        TicketResponse response = ticketService.updatePriority(id, priority);
+        TicketResponse response = ticketService.updatePriority(id, request.getPriority());
         return ResponseEntity.ok(response);
     }
 

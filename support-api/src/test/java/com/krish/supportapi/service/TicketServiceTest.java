@@ -12,7 +12,6 @@ import com.krish.supportapi.domain.enums.TicketPriority;
 import com.krish.supportapi.domain.enums.TicketStatus;
 import com.krish.supportapi.domain.enums.UserRole;
 import com.krish.supportapi.event.TicketCreatedEvent;
-import com.krish.supportapi.repository.TicketMessageRepository;
 import com.krish.supportapi.repository.TicketRepository;
 import com.krish.supportapi.repository.UserRepository;
 import java.util.List;
@@ -31,6 +30,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.kafka.core.KafkaTemplate;
 
@@ -39,9 +39,6 @@ class TicketServiceTest {
 
     @Mock
     private TicketRepository ticketRepository;
-
-    @Mock
-    private TicketMessageRepository ticketMessageRepository;
 
     @Mock
     private UserRepository userRepository;
@@ -105,7 +102,7 @@ class TicketServiceTest {
     @Test
     void createTicket_success_returnsTicketResponse() throws JsonProcessingException {
         Mockito.when(userRepository.findById(sampleCustomer.getId())).thenReturn(Optional.of(sampleCustomer));
-        Mockito.when(ticketRepository.count()).thenReturn(0L);
+        Mockito.when(ticketRepository.nextTicketNumber()).thenReturn(1L);
         Mockito.when(ticketRepository.save(ArgumentMatchers.any(Ticket.class))).thenReturn(sampleTicket);
         Mockito.when(objectMapper.writeValueAsString(ArgumentMatchers.any(TicketCreatedEvent.class)))
             .thenReturn("{}");
@@ -142,8 +139,10 @@ class TicketServiceTest {
     @Test
     void getTickets_asCustomer_returnsOnlyOwnTickets() {
         Pageable pageable = PageRequest.of(0, 20);
-        Mockito.when(ticketRepository.findByCustomerId(sampleCustomer.getId(), pageable))
-            .thenReturn(new PageImpl<>(List.of(sampleTicket)));
+        Mockito.when(ticketRepository.findAll(
+            ArgumentMatchers.any(Specification.class),
+            ArgumentMatchers.any(Pageable.class)
+        )).thenReturn(new PageImpl<>(List.of(sampleTicket)));
 
         Page<TicketResponse> response = ticketService.getTickets(
             sampleCustomer.getId(),
@@ -156,16 +155,16 @@ class TicketServiceTest {
 
         Assertions.assertNotNull(response);
         Mockito.verify(ticketRepository, Mockito.times(1))
-            .findByCustomerId(sampleCustomer.getId(), pageable);
-        Mockito.verify(ticketRepository, Mockito.never())
-            .findAll(ArgumentMatchers.any(Pageable.class));
+            .findAll(ArgumentMatchers.any(Specification.class), ArgumentMatchers.any(Pageable.class));
     }
 
     @Test
     void getTickets_asAdmin_returnsAllTickets() {
         Pageable pageable = PageRequest.of(0, 20);
-        Mockito.when(ticketRepository.findAll(ArgumentMatchers.any(Pageable.class)))
-            .thenReturn(new PageImpl<>(List.of(sampleTicket)));
+        Mockito.when(ticketRepository.findAll(
+            ArgumentMatchers.any(Specification.class),
+            ArgumentMatchers.any(Pageable.class)
+        )).thenReturn(new PageImpl<>(List.of(sampleTicket)));
 
         Page<TicketResponse> response = ticketService.getTickets(
             sampleAgent.getId(),
@@ -178,9 +177,7 @@ class TicketServiceTest {
 
         Assertions.assertNotNull(response);
         Mockito.verify(ticketRepository, Mockito.times(1))
-            .findAll(ArgumentMatchers.any(Pageable.class));
-        Mockito.verify(ticketRepository, Mockito.never())
-            .findByCustomerId(ArgumentMatchers.any(UUID.class), ArgumentMatchers.any(Pageable.class));
+            .findAll(ArgumentMatchers.any(Specification.class), ArgumentMatchers.any(Pageable.class));
     }
 
     @Test

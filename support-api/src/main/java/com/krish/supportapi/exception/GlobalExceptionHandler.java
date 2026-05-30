@@ -44,6 +44,16 @@ public class GlobalExceptionHandler {
         return buildResponse(HttpStatus.UNAUTHORIZED, "Unauthorized", exception.getMessage());
     }
 
+    @ExceptionHandler(TicketNotFoundException.class)
+    public ResponseEntity<ApiError> handleTicketNotFoundException(TicketNotFoundException exception) {
+        return buildResponse(HttpStatus.NOT_FOUND, "Not Found", exception.getMessage());
+    }
+
+    @ExceptionHandler(AgentNotFoundException.class)
+    public ResponseEntity<ApiError> handleAgentNotFoundException(AgentNotFoundException exception) {
+        return buildResponse(HttpStatus.NOT_FOUND, "Not Found", exception.getMessage());
+    }
+
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<ApiError> handleRuntimeException(RuntimeException exception) {
         return buildResponse(HttpStatus.BAD_REQUEST, "Bad Request", exception.getMessage());
