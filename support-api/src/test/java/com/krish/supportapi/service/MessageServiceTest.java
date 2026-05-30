@@ -26,6 +26,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.redis.core.StringRedisTemplate;
 
 @ExtendWith(MockitoExtension.class)
 class MessageServiceTest {
@@ -38,6 +39,9 @@ class MessageServiceTest {
 
     @Mock
     private UserRepository userRepository;
+
+    @Mock
+    private StringRedisTemplate stringRedisTemplate;
 
     @InjectMocks
     private MessageService messageService;
@@ -99,6 +103,28 @@ class MessageServiceTest {
     }
 
     @Test
+    void sendMessage_customerSendingToOtherTicket_throwsException() {
+        User otherCustomer = User.builder()
+            .id(UUID.randomUUID())
+            .email("other@example.com")
+            .fullName("Other Customer")
+            .role(UserRole.CUSTOMER)
+            .isActive(true)
+            .build();
+
+        Mockito.when(ticketRepository.findById(sampleTicket.getId())).thenReturn(Optional.of(sampleTicket));
+        Mockito.when(userRepository.findById(otherCustomer.getId())).thenReturn(Optional.of(otherCustomer));
+
+        Assertions.assertThrows(
+            RuntimeException.class,
+            () -> messageService.sendMessage(sampleTicket.getId(), createRequest, otherCustomer.getId())
+        );
+
+        Mockito.verify(ticketMessageRepository, Mockito.never())
+            .save(ArgumentMatchers.any(TicketMessage.class));
+    }
+
+    @Test
     void sendMessage_closedTicket_throwsException() {
         Ticket closedTicket = Ticket.builder()
             .id(sampleTicket.getId())
@@ -136,6 +162,7 @@ class MessageServiceTest {
         Assertions.assertEquals(TicketStatus.OPEN, resolvedTicket.getStatus());
         Mockito.verify(ticketMessageRepository, Mockito.times(1))
             .save(ArgumentMatchers.any(TicketMessage.class));
+        Mockito.verify(stringRedisTemplate, Mockito.times(1)).delete("analytics:overview");
     }
 
     @Test

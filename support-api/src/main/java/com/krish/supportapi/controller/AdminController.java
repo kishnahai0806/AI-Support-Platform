@@ -2,10 +2,9 @@ package com.krish.supportapi.controller;
 
 import com.krish.supportapi.domain.dto.response.AnalyticsOverviewResponse;
 import com.krish.supportapi.domain.dto.response.UserResponse;
-import com.krish.supportapi.domain.entity.User;
-import com.krish.supportapi.repository.UserRepository;
 import com.krish.supportapi.service.AnalyticsService;
 import com.krish.supportapi.service.TicketService;
+import com.krish.supportapi.service.UserService;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -28,23 +27,22 @@ public class AdminController {
 
     private final AnalyticsService analyticsService;
 
-    private final UserRepository userRepository;
+    private final UserService userService;
 
     public AdminController(
         TicketService ticketService,
         AnalyticsService analyticsService,
-        UserRepository userRepository
+        UserService userService
     ) {
         this.ticketService = ticketService;
         this.analyticsService = analyticsService;
-        this.userRepository = userRepository;
+        this.userService = userService;
     }
 
     @GetMapping("/analytics/overview")
     public ResponseEntity<AnalyticsOverviewResponse> getAnalyticsOverview(
         Authentication authentication
     ) {
-        getCurrentUser(authentication);
         AnalyticsOverviewResponse response = analyticsService.getOverview();
         return ResponseEntity.ok(response);
     }
@@ -55,14 +53,12 @@ public class AdminController {
         @RequestParam(defaultValue = "20") int size,
         Authentication authentication
     ) {
-        getCurrentUser(authentication);
         Pageable pageable = PageRequest.of(
             page,
             size,
             Sort.by(Sort.Direction.DESC, "createdAt")
         );
-        Page<UserResponse> response = userRepository.findAll(pageable)
-            .map(this::mapToUserResponse);
+        Page<UserResponse> response = userService.getUsers(pageable);
         return ResponseEntity.ok(response);
     }
 
@@ -71,23 +67,7 @@ public class AdminController {
         @PathVariable UUID id,
         Authentication authentication
     ) {
-        getCurrentUser(authentication);
         ticketService.deleteTicket(id);
         return ResponseEntity.noContent().build();
-    }
-
-    private UserResponse mapToUserResponse(User user) {
-        return UserResponse.builder()
-            .id(user.getId())
-            .email(user.getEmail())
-            .fullName(user.getFullName())
-            .role(user.getRole())
-            .isActive(user.isActive())
-            .createdAt(user.getCreatedAt())
-            .build();
-    }
-
-    private User getCurrentUser(Authentication authentication) {
-        return (User) authentication.getPrincipal();
     }
 }

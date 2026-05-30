@@ -14,13 +14,16 @@ import com.krish.supportapi.domain.enums.TicketPriority;
 import com.krish.supportapi.domain.enums.TicketStatus;
 import com.krish.supportapi.domain.enums.UserRole;
 import com.krish.supportapi.event.TicketCreatedEvent;
-import com.krish.supportapi.repository.TicketMessageRepository;
+import com.krish.supportapi.exception.AgentNotFoundException;
+import com.krish.supportapi.exception.TicketNotFoundException;
 import com.krish.supportapi.repository.TicketRepository;
+import com.krish.supportapi.repository.TicketSpecification;
 import com.krish.supportapi.repository.UserRepository;
 import java.time.LocalDateTime;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
@@ -32,9 +35,9 @@ public class TicketService {
 
     private static final String TICKET_CREATED_TOPIC = "ticket.created";
 
-    private final TicketRepository ticketRepository;
+    private static final String ANALYTICS_CACHE_KEY = "analytics:overview";
 
-    private final TicketMessageRepository ticketMessageRepository;
+    private final TicketRepository ticketRepository;
 
     private final UserRepository userRepository;
 
@@ -46,14 +49,12 @@ public class TicketService {
 
     public TicketService(
         TicketRepository ticketRepository,
-        TicketMessageRepository ticketMessageRepository,
         UserRepository userRepository,
         KafkaTemplate<String, String> kafkaTemplate,
         ObjectMapper objectMapper,
         StringRedisTemplate stringRedisTemplate
     ) {
         this.ticketRepository = ticketRepository;
-        this.ticketMessageRepository = ticketMessageRepository;
         this.userRepository = userRepository;
         this.kafkaTemplate = kafkaTemplate;
         this.objectMapper = objectMapper;
@@ -62,9 +63,9 @@ public class TicketService {
 
     public TicketResponse createTicket(CreateTicketRequest request, UUID customerId) {
         User customer = userRepository.findById(customerId)
-            .orElseThrow(() -> new RuntimeException("Customer not found"));
+            .orElseThrow(() -> new TicketNotFoundException("Customer not found"));
 
-        String ticketNumber = "TKT-" + String.format("%06d", ticketRepository.count() + 1);
+        String ticketNumber = "TKT-" + String.format("%06d", ticketRepository.nextTicketNumber());
         TicketPriority priority = request.getPriority() != null
             ? request.getPriority()
             : TicketPriority.MEDIUM;
@@ -102,7 +103,7 @@ public class TicketService {
         }
 
         kafkaTemplate.send(TICKET_CREATED_TOPIC, savedTicket.getId().toString(), serializedEvent);
-        stringRedisTemplate.delete("analytics:overview");
+        stringRedisTemplate.delete(ANALYTICS_CACHE_KEY);
 
         return mapToResponse(savedTicket);
     }
@@ -115,24 +116,14 @@ public class TicketService {
         TicketCategory category,
         Pageable pageable
     ) {
-        Page<Ticket> tickets;
-
-        if (role == UserRole.CUSTOMER) {
-            tickets = status == null
-                ? ticketRepository.findByCustomerId(customerId, pageable)
-                : ticketRepository.findByCustomerIdAndStatus(customerId, status, pageable);
-        } else {
-            tickets = status == null
-                ? ticketRepository.findAll(pageable)
-                : ticketRepository.findByStatus(status, pageable);
-        }
-
-        return tickets.map(this::mapToResponse);
+        Specification<Ticket> spec = TicketSpecification.buildFilter(
+            customerId, role, status, priority, category);
+        return ticketRepository.findAll(spec, pageable).map(this::mapToResponse);
     }
 
     public TicketDetailResponse getTicket(UUID ticketId, UUID requesterId, UserRole role) {
         Ticket ticket = ticketRepository.findById(ticketId)
-            .orElseThrow(() -> new RuntimeException("Ticket not found"));
+            .orElseThrow(() -> new TicketNotFoundException("Ticket not found"));
 
         if (role == UserRole.CUSTOMER && !ticket.getCustomer().getId().equals(requesterId)) {
             throw new RuntimeException("Access denied");
@@ -147,7 +138,7 @@ public class TicketService {
         UUID agentId
     ) {
         Ticket ticket = ticketRepository.findById(ticketId)
-            .orElseThrow(() -> new RuntimeException("Ticket not found"));
+            .orElseThrow(() -> new TicketNotFoundException("Ticket not found"));
 
         ticket.setStatus(request.getStatus());
 
@@ -160,16 +151,16 @@ public class TicketService {
         }
 
         Ticket savedTicket = ticketRepository.save(ticket);
-        stringRedisTemplate.delete("analytics:overview");
+        stringRedisTemplate.delete(ANALYTICS_CACHE_KEY);
 
         return mapToResponse(savedTicket);
     }
 
     public TicketResponse assignTicket(UUID ticketId, AssignTicketRequest request) {
         Ticket ticket = ticketRepository.findById(ticketId)
-            .orElseThrow(() -> new RuntimeException("Ticket not found"));
+            .orElseThrow(() -> new TicketNotFoundException("Ticket not found"));
         User agent = userRepository.findById(request.getAgentId())
-            .orElseThrow(() -> new RuntimeException("Agent not found"));
+            .orElseThrow(() -> new AgentNotFoundException("Agent not found"));
 
         if (agent.getRole() != UserRole.AGENT) {
             throw new RuntimeException("User is not an agent");
@@ -182,25 +173,29 @@ public class TicketService {
         }
 
         Ticket savedTicket = ticketRepository.save(ticket);
+        stringRedisTemplate.delete(ANALYTICS_CACHE_KEY);
+
         return mapToResponse(savedTicket);
     }
 
     public TicketResponse updatePriority(UUID ticketId, TicketPriority priority) {
         Ticket ticket = ticketRepository.findById(ticketId)
-            .orElseThrow(() -> new RuntimeException("Ticket not found"));
+            .orElseThrow(() -> new TicketNotFoundException("Ticket not found"));
 
         ticket.setPriority(priority);
 
         Ticket savedTicket = ticketRepository.save(ticket);
+        stringRedisTemplate.delete(ANALYTICS_CACHE_KEY);
+
         return mapToResponse(savedTicket);
     }
 
     public void deleteTicket(UUID ticketId) {
         Ticket ticket = ticketRepository.findById(ticketId)
-            .orElseThrow(() -> new RuntimeException("Ticket not found"));
+            .orElseThrow(() -> new TicketNotFoundException("Ticket not found"));
 
         ticketRepository.delete(ticket);
-        stringRedisTemplate.delete("analytics:overview");
+        stringRedisTemplate.delete(ANALYTICS_CACHE_KEY);
     }
 
     private TicketResponse mapToResponse(Ticket ticket) {
@@ -240,7 +235,6 @@ public class TicketService {
             .aiEscalated(response.isAiEscalated())
             .createdAt(response.getCreatedAt())
             .updatedAt(response.getUpdatedAt())
-            .messages(null)
             .build();
     }
 }

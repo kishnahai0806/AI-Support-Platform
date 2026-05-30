@@ -8,6 +8,8 @@ import com.krish.supportapi.domain.dto.request.RegisterRequest;
 import com.krish.supportapi.domain.dto.request.UpdateTicketStatusRequest;
 import com.krish.supportapi.domain.enums.TicketPriority;
 import com.krish.supportapi.domain.enums.TicketStatus;
+import com.krish.supportapi.domain.enums.UserRole;
+import com.krish.supportapi.repository.UserRepository;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -62,6 +64,9 @@ class TicketControllerIT {
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Autowired
+    private UserRepository userRepository;
+
     @MockitoBean
     private StringRedisTemplate stringRedisTemplate;
 
@@ -72,6 +77,10 @@ class TicketControllerIT {
     private KafkaTemplate<String, String> kafkaTemplate;
 
     private String accessToken;
+
+    private String agentToken;
+
+    private String adminToken;
 
     @DynamicPropertySource
     static void configureProperties(DynamicPropertyRegistry registry) {
@@ -91,11 +100,21 @@ class TicketControllerIT {
     void setUp() throws Exception {
         when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
 
-        String email = uniqueEmail();
+        String customerEmail = uniqueEmail();
         String password = "password123";
-        registerUser(registerRequest(email, password));
+        registerUser(registerRequest(customerEmail, password));
         Thread.sleep(1100);
-        accessToken = loginAndExtractAccessToken(loginRequest(email, password));
+        accessToken = loginAndExtractAccessToken(loginRequest(customerEmail, password));
+
+        String agentEmail = uniqueEmail();
+        registerUser(registerRequest(agentEmail, password));
+        updateUserRole(agentEmail, UserRole.AGENT);
+        agentToken = loginAndExtractAccessToken(loginRequest(agentEmail, password));
+
+        String adminEmail = uniqueEmail();
+        registerUser(registerRequest(adminEmail, password));
+        updateUserRole(adminEmail, UserRole.ADMIN);
+        adminToken = loginAndExtractAccessToken(loginRequest(adminEmail, password));
     }
 
     @Test
@@ -157,19 +176,19 @@ class TicketControllerIT {
     }
 
     @Test
-    void getTicket_notFound_returns400() throws Exception {
+    void getTicket_notFound_returns404() throws Exception {
         performAuthenticatedRequest(get("/api/v1/tickets/{id}", UUID.randomUUID()))
-            .andExpect(status().isBadRequest());
+            .andExpect(status().isNotFound());
     }
 
     @Test
-    void updateStatus_validRequest_returns200() throws Exception {
+    void updateStatus_asAgent_returns200() throws Exception {
         String ticketId = createTicketAndExtractId(createTicketRequest("Need technical support"));
         UpdateTicketStatusRequest request = UpdateTicketStatusRequest.builder()
             .status(TicketStatus.IN_PROGRESS)
             .build();
 
-        performAuthenticatedRequest(patch("/api/v1/tickets/{id}/status", ticketId)
+        performRequestWithToken(agentToken, patch("/api/v1/tickets/{id}/status", ticketId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request)))
             .andExpect(status().isOk())
@@ -177,11 +196,38 @@ class TicketControllerIT {
     }
 
     @Test
-    void deleteTicket_returns204() throws Exception {
+    void updateStatus_asCustomer_returns403() throws Exception {
+        String ticketId = createTicketAndExtractId(createTicketRequest("Need help with billing"));
+        UpdateTicketStatusRequest request = UpdateTicketStatusRequest.builder()
+            .status(TicketStatus.IN_PROGRESS)
+            .build();
+
+        performAuthenticatedRequest(patch("/api/v1/tickets/{id}/status", ticketId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request)))
+            .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void deleteTicket_asAdmin_returns204() throws Exception {
+        String ticketId = createTicketAndExtractId(createTicketRequest("Need general support"));
+
+        performRequestWithToken(adminToken, delete("/api/v1/tickets/{id}", ticketId))
+            .andExpect(status().isNoContent());
+    }
+
+    @Test
+    void deleteTicket_asCustomer_returns403() throws Exception {
         String ticketId = createTicketAndExtractId(createTicketRequest("Need general support"));
 
         performAuthenticatedRequest(delete("/api/v1/tickets/{id}", ticketId))
-            .andExpect(status().isNoContent());
+            .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void getAdminAnalytics_asCustomer_returns403() throws Exception {
+        performAuthenticatedRequest(get("/api/v1/admin/analytics/overview"))
+            .andExpect(status().isForbidden());
     }
 
     private ResultActions performAuthenticatedRequest(
@@ -190,11 +236,25 @@ class TicketControllerIT {
         return mockMvc.perform(requestBuilder.header("Authorization", "Bearer " + accessToken));
     }
 
+    private ResultActions performRequestWithToken(
+        String token,
+        MockHttpServletRequestBuilder requestBuilder
+    ) throws Exception {
+        return mockMvc.perform(requestBuilder.header("Authorization", "Bearer " + token));
+    }
+
     private void registerUser(RegisterRequest request) throws Exception {
         mockMvc.perform(post("/api/v1/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request)))
             .andExpect(status().isCreated());
+    }
+
+    private void updateUserRole(String email, UserRole role) {
+        userRepository.findByEmail(email).ifPresent(user -> {
+            user.setRole(role);
+            userRepository.save(user);
+        });
     }
 
     private String loginAndExtractAccessToken(LoginRequest request) throws Exception {
