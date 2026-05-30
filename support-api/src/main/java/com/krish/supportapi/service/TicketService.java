@@ -1,0 +1,246 @@
+package com.krish.supportapi.service;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.krish.supportapi.domain.dto.request.AssignTicketRequest;
+import com.krish.supportapi.domain.dto.request.CreateTicketRequest;
+import com.krish.supportapi.domain.dto.request.UpdateTicketStatusRequest;
+import com.krish.supportapi.domain.dto.response.TicketDetailResponse;
+import com.krish.supportapi.domain.dto.response.TicketResponse;
+import com.krish.supportapi.domain.entity.Ticket;
+import com.krish.supportapi.domain.entity.User;
+import com.krish.supportapi.domain.enums.TicketCategory;
+import com.krish.supportapi.domain.enums.TicketPriority;
+import com.krish.supportapi.domain.enums.TicketStatus;
+import com.krish.supportapi.domain.enums.UserRole;
+import com.krish.supportapi.event.TicketCreatedEvent;
+import com.krish.supportapi.repository.TicketMessageRepository;
+import com.krish.supportapi.repository.TicketRepository;
+import com.krish.supportapi.repository.UserRepository;
+import java.time.LocalDateTime;
+import java.util.UUID;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+@Transactional
+public class TicketService {
+
+    private static final String TICKET_CREATED_TOPIC = "ticket.created";
+
+    private final TicketRepository ticketRepository;
+
+    private final TicketMessageRepository ticketMessageRepository;
+
+    private final UserRepository userRepository;
+
+    private final KafkaTemplate<String, String> kafkaTemplate;
+
+    private final ObjectMapper objectMapper;
+
+    private final StringRedisTemplate stringRedisTemplate;
+
+    public TicketService(
+        TicketRepository ticketRepository,
+        TicketMessageRepository ticketMessageRepository,
+        UserRepository userRepository,
+        KafkaTemplate<String, String> kafkaTemplate,
+        ObjectMapper objectMapper,
+        StringRedisTemplate stringRedisTemplate
+    ) {
+        this.ticketRepository = ticketRepository;
+        this.ticketMessageRepository = ticketMessageRepository;
+        this.userRepository = userRepository;
+        this.kafkaTemplate = kafkaTemplate;
+        this.objectMapper = objectMapper;
+        this.stringRedisTemplate = stringRedisTemplate;
+    }
+
+    public TicketResponse createTicket(CreateTicketRequest request, UUID customerId) {
+        User customer = userRepository.findById(customerId)
+            .orElseThrow(() -> new RuntimeException("Customer not found"));
+
+        String ticketNumber = "TKT-" + String.format("%06d", ticketRepository.count() + 1);
+        TicketPriority priority = request.getPriority() != null
+            ? request.getPriority()
+            : TicketPriority.MEDIUM;
+
+        Ticket ticket = Ticket.builder()
+            .ticketNumber(ticketNumber)
+            .title(request.getTitle())
+            .description(request.getDescription())
+            .priority(priority)
+            .category(request.getCategory())
+            .status(TicketStatus.OPEN)
+            .customer(customer)
+            .build();
+
+        Ticket savedTicket = ticketRepository.save(ticket);
+
+        TicketCreatedEvent event = TicketCreatedEvent.builder()
+            .eventId(UUID.randomUUID())
+            .ticketId(savedTicket.getId())
+            .ticketNumber(savedTicket.getTicketNumber())
+            .title(savedTicket.getTitle())
+            .description(savedTicket.getDescription())
+            .category(savedTicket.getCategory())
+            .priority(savedTicket.getPriority())
+            .customerId(customer.getId())
+            .customerEmail(customer.getEmail())
+            .createdAt(savedTicket.getCreatedAt())
+            .build();
+
+        String serializedEvent;
+        try {
+            serializedEvent = objectMapper.writeValueAsString(event);
+        } catch (JsonProcessingException exception) {
+            throw new RuntimeException("Failed to serialize ticket created event", exception);
+        }
+
+        kafkaTemplate.send(TICKET_CREATED_TOPIC, savedTicket.getId().toString(), serializedEvent);
+        stringRedisTemplate.delete("analytics:overview");
+
+        return mapToResponse(savedTicket);
+    }
+
+    public Page<TicketResponse> getTickets(
+        UUID customerId,
+        UserRole role,
+        TicketStatus status,
+        TicketPriority priority,
+        TicketCategory category,
+        Pageable pageable
+    ) {
+        Page<Ticket> tickets;
+
+        if (role == UserRole.CUSTOMER) {
+            tickets = status == null
+                ? ticketRepository.findByCustomerId(customerId, pageable)
+                : ticketRepository.findByCustomerIdAndStatus(customerId, status, pageable);
+        } else {
+            tickets = status == null
+                ? ticketRepository.findAll(pageable)
+                : ticketRepository.findByStatus(status, pageable);
+        }
+
+        return tickets.map(this::mapToResponse);
+    }
+
+    public TicketDetailResponse getTicket(UUID ticketId, UUID requesterId, UserRole role) {
+        Ticket ticket = ticketRepository.findById(ticketId)
+            .orElseThrow(() -> new RuntimeException("Ticket not found"));
+
+        if (role == UserRole.CUSTOMER && !ticket.getCustomer().getId().equals(requesterId)) {
+            throw new RuntimeException("Access denied");
+        }
+
+        return mapToDetailResponse(ticket);
+    }
+
+    public TicketResponse updateStatus(
+        UUID ticketId,
+        UpdateTicketStatusRequest request,
+        UUID agentId
+    ) {
+        Ticket ticket = ticketRepository.findById(ticketId)
+            .orElseThrow(() -> new RuntimeException("Ticket not found"));
+
+        ticket.setStatus(request.getStatus());
+
+        if (request.getStatus() == TicketStatus.RESOLVED && ticket.getResolvedAt() == null) {
+            ticket.setResolvedAt(LocalDateTime.now());
+        }
+
+        if (request.getStatus() == TicketStatus.CLOSED) {
+            ticket.setClosedAt(LocalDateTime.now());
+        }
+
+        Ticket savedTicket = ticketRepository.save(ticket);
+        stringRedisTemplate.delete("analytics:overview");
+
+        return mapToResponse(savedTicket);
+    }
+
+    public TicketResponse assignTicket(UUID ticketId, AssignTicketRequest request) {
+        Ticket ticket = ticketRepository.findById(ticketId)
+            .orElseThrow(() -> new RuntimeException("Ticket not found"));
+        User agent = userRepository.findById(request.getAgentId())
+            .orElseThrow(() -> new RuntimeException("Agent not found"));
+
+        if (agent.getRole() != UserRole.AGENT) {
+            throw new RuntimeException("User is not an agent");
+        }
+
+        ticket.setAssignedAgent(agent);
+
+        if (ticket.getFirstResponseAt() == null) {
+            ticket.setFirstResponseAt(LocalDateTime.now());
+        }
+
+        Ticket savedTicket = ticketRepository.save(ticket);
+        return mapToResponse(savedTicket);
+    }
+
+    public TicketResponse updatePriority(UUID ticketId, TicketPriority priority) {
+        Ticket ticket = ticketRepository.findById(ticketId)
+            .orElseThrow(() -> new RuntimeException("Ticket not found"));
+
+        ticket.setPriority(priority);
+
+        Ticket savedTicket = ticketRepository.save(ticket);
+        return mapToResponse(savedTicket);
+    }
+
+    public void deleteTicket(UUID ticketId) {
+        Ticket ticket = ticketRepository.findById(ticketId)
+            .orElseThrow(() -> new RuntimeException("Ticket not found"));
+
+        ticketRepository.delete(ticket);
+        stringRedisTemplate.delete("analytics:overview");
+    }
+
+    private TicketResponse mapToResponse(Ticket ticket) {
+        return TicketResponse.builder()
+            .id(ticket.getId())
+            .ticketNumber(ticket.getTicketNumber())
+            .title(ticket.getTitle())
+            .description(ticket.getDescription())
+            .status(ticket.getStatus())
+            .priority(ticket.getPriority())
+            .category(ticket.getCategory())
+            .customerId(ticket.getCustomer().getId())
+            .assignedAgentId(ticket.getAssignedAgent() != null
+                ? ticket.getAssignedAgent().getId()
+                : null)
+            .aiConfidenceScore(ticket.getAiConfidenceScore())
+            .aiEscalated(ticket.isAiEscalated())
+            .createdAt(ticket.getCreatedAt())
+            .updatedAt(ticket.getUpdatedAt())
+            .build();
+    }
+
+    private TicketDetailResponse mapToDetailResponse(Ticket ticket) {
+        TicketResponse response = mapToResponse(ticket);
+
+        return TicketDetailResponse.builder()
+            .id(response.getId())
+            .ticketNumber(response.getTicketNumber())
+            .title(response.getTitle())
+            .description(response.getDescription())
+            .status(response.getStatus())
+            .priority(response.getPriority())
+            .category(response.getCategory())
+            .customerId(response.getCustomerId())
+            .assignedAgentId(response.getAssignedAgentId())
+            .aiConfidenceScore(response.getAiConfidenceScore())
+            .aiEscalated(response.isAiEscalated())
+            .createdAt(response.getCreatedAt())
+            .updatedAt(response.getUpdatedAt())
+            .messages(null)
+            .build();
+    }
+}
