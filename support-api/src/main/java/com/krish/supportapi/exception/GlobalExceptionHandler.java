@@ -32,6 +32,18 @@ public class GlobalExceptionHandler {
         return buildResponse(HttpStatus.BAD_REQUEST, "Validation Failed", message);
     }
 
+    @ExceptionHandler(EmailAlreadyExistsException.class)
+    public ResponseEntity<ApiError> handleEmailAlreadyExistsException(
+        EmailAlreadyExistsException exception
+    ) {
+        return buildResponse(HttpStatus.CONFLICT, "Conflict", exception.getMessage());
+    }
+
+    @ExceptionHandler(InvalidTokenException.class)
+    public ResponseEntity<ApiError> handleInvalidTokenException(InvalidTokenException exception) {
+        return buildResponse(HttpStatus.UNAUTHORIZED, "Unauthorized", exception.getMessage());
+    }
+
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<ApiError> handleRuntimeException(RuntimeException exception) {
         return buildResponse(HttpStatus.BAD_REQUEST, "Bad Request", exception.getMessage());

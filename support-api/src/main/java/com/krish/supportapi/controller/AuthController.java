@@ -3,6 +3,7 @@ package com.krish.supportapi.controller;
 import com.krish.supportapi.domain.dto.request.LoginRequest;
 import com.krish.supportapi.domain.dto.request.RegisterRequest;
 import com.krish.supportapi.domain.dto.response.AuthResponse;
+import com.krish.supportapi.security.SecurityConstants;
 import com.krish.supportapi.service.AuthService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -17,10 +18,6 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/v1/auth")
 public class AuthController {
-
-    private static final String AUTHORIZATION_HEADER = "Authorization";
-
-    private static final String BEARER_PREFIX = "Bearer ";
 
     private final AuthService authService;
 
@@ -58,11 +55,11 @@ public class AuthController {
         @RequestBody Map<String, String> body
     ) {
         String refreshToken = body.get("refreshToken");
-        String authorizationHeader = request.getHeader(AUTHORIZATION_HEADER);
+        String authorizationHeader = request.getHeader(SecurityConstants.AUTHORIZATION_HEADER);
         String accessToken = null;
 
-        if (authorizationHeader != null && authorizationHeader.startsWith(BEARER_PREFIX)) {
-            accessToken = authorizationHeader.substring(BEARER_PREFIX.length());
+        if (authorizationHeader != null && authorizationHeader.startsWith(SecurityConstants.BEARER_PREFIX)) {
+            accessToken = authorizationHeader.substring(SecurityConstants.BEARER_PREFIX.length());
         }
 
         authService.logout(refreshToken, accessToken);
