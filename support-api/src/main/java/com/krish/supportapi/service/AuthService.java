@@ -7,6 +7,8 @@ import com.krish.supportapi.domain.dto.response.AuthResponse;
 import com.krish.supportapi.domain.entity.RefreshToken;
 import com.krish.supportapi.domain.entity.User;
 import com.krish.supportapi.domain.enums.UserRole;
+import com.krish.supportapi.exception.EmailAlreadyExistsException;
+import com.krish.supportapi.exception.InvalidTokenException;
 import com.krish.supportapi.repository.RefreshTokenRepository;
 import com.krish.supportapi.repository.UserRepository;
 import com.krish.supportapi.security.JwtTokenProvider;
@@ -61,7 +63,7 @@ public class AuthService {
         String email = request.getEmail();
 
         if (userRepository.existsByEmail(email)) {
-            throw new RuntimeException("Email already registered: " + email);
+            throw new EmailAlreadyExistsException("Email already registered: " + email);
         }
 
         User user = User.builder()
@@ -87,7 +89,7 @@ public class AuthService {
         );
 
         User user = userRepository.findByEmail(request.getEmail())
-            .orElseThrow(() -> new RuntimeException("User not found"));
+            .orElseThrow(() -> new InvalidTokenException("User not found"));
 
         List<RefreshToken> activeRefreshTokens =
             refreshTokenRepository.findByUserIdAndRevokedFalse(user.getId());
@@ -110,24 +112,26 @@ public class AuthService {
                 refreshTokenRepository.save(refreshToken);
             });
 
-        stringRedisTemplate.opsForValue().set(
-            "blacklist:" + accessToken,
-            "true",
-            jwtProperties.getAccessTokenExpiryMs(),
-            TimeUnit.MILLISECONDS
-        );
+        if (accessToken != null) {
+            stringRedisTemplate.opsForValue().set(
+                "blacklist:" + accessToken,
+                "true",
+                jwtProperties.getAccessTokenExpiryMs(),
+                TimeUnit.MILLISECONDS
+            );
+        }
     }
 
     public AuthResponse refreshToken(String refreshTokenString) {
         RefreshToken currentRefreshToken = refreshTokenRepository.findByTokenHash(refreshTokenString)
-            .orElseThrow(() -> new RuntimeException("Refresh token not found"));
+            .orElseThrow(() -> new InvalidTokenException("Refresh token not found"));
 
         if (currentRefreshToken.isRevoked()) {
-            throw new RuntimeException("Refresh token has been revoked");
+            throw new InvalidTokenException("Refresh token has been revoked");
         }
 
         if (currentRefreshToken.getExpiresAt().isBefore(LocalDateTime.now())) {
-            throw new RuntimeException("Refresh token has expired");
+            throw new InvalidTokenException("Refresh token has expired");
         }
 
         User user = currentRefreshToken.getUser();

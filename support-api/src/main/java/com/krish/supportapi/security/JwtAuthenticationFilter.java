@@ -6,6 +6,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -17,20 +18,20 @@ import org.springframework.web.filter.OncePerRequestFilter;
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
-    private static final String AUTHORIZATION_HEADER = "Authorization";
-
-    private static final String BEARER_PREFIX = "Bearer ";
-
     private final JwtTokenProvider jwtTokenProvider;
 
     private final UserDetailsService userDetailsService;
 
+    private final StringRedisTemplate stringRedisTemplate;
+
     public JwtAuthenticationFilter(
         JwtTokenProvider jwtTokenProvider,
-        UserDetailsService userDetailsService
+        UserDetailsService userDetailsService,
+        StringRedisTemplate stringRedisTemplate
     ) {
         this.jwtTokenProvider = jwtTokenProvider;
         this.userDetailsService = userDetailsService;
+        this.stringRedisTemplate = stringRedisTemplate;
     }
 
     @Override
@@ -39,14 +40,20 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         HttpServletResponse response,
         FilterChain filterChain
     ) throws ServletException, IOException {
-        String authorizationHeader = request.getHeader(AUTHORIZATION_HEADER);
+        String authorizationHeader = request.getHeader(SecurityConstants.AUTHORIZATION_HEADER);
 
-        if (authorizationHeader != null && authorizationHeader.startsWith(BEARER_PREFIX)) {
+        if (authorizationHeader != null && authorizationHeader.startsWith(SecurityConstants.BEARER_PREFIX)) {
             try {
-                String token = authorizationHeader.substring(BEARER_PREFIX.length());
+                String token = authorizationHeader.substring(SecurityConstants.BEARER_PREFIX.length());
                 String username = jwtTokenProvider.extractUsername(token);
 
                 if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+                    if (Boolean.TRUE.equals(stringRedisTemplate.hasKey("blacklist:" + token))) {
+                        SecurityContextHolder.clearContext();
+                        filterChain.doFilter(request, response);
+                        return;
+                    }
+
                     UserDetails userDetails = userDetailsService.loadUserByUsername(username);
 
                     if (jwtTokenProvider.isTokenValid(token, userDetails)) {
