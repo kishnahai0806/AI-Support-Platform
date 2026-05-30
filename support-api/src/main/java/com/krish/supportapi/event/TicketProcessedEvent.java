@@ -1,6 +1,7 @@
 package com.krish.supportapi.event;
 
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import com.fasterxml.jackson.databind.annotation.JsonPOJOBuilder;
 import com.krish.supportapi.domain.enums.TicketCategory;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -40,4 +41,8 @@ public class TicketProcessedEvent {
     String errorMessage;
 
     LocalDateTime processedAt;
+
+    @JsonPOJOBuilder(withPrefix = "")
+    public static class TicketProcessedEventBuilder {
+    }
 }
