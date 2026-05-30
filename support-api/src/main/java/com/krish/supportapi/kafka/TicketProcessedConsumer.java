@@ -10,6 +10,7 @@ import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 @Component
 @Slf4j
@@ -31,13 +32,14 @@ public class TicketProcessedConsumer {
         topics = "ticket.processed",
         groupId = "support-api-group"
     )
+    @Transactional
     public void consume(String message) {
         TicketProcessedEvent event;
 
         try {
             event = objectMapper.readValue(message, TicketProcessedEvent.class);
         } catch (JsonProcessingException exception) {
-            log.error("Failed to deserialize ticket processed event", exception);
+            log.error("Failed to deserialize ticket processed event. Raw message: {}", message, exception);
             return;
         }
 
@@ -52,7 +54,7 @@ public class TicketProcessedConsumer {
             Ticket ticket = optionalTicket.get();
 
             if (ticket.getAiProcessedAt() != null) {
-                log.info("Ticket already processed, skipping");
+                log.debug("Ticket {} already processed by AI, skipping duplicate event", ticket.getId());
                 return;
             }
 
@@ -65,6 +67,8 @@ public class TicketProcessedConsumer {
                 ticket.setStatus(TicketStatus.ESCALATED);
             } else if (event.isSuccess()) {
                 ticket.setStatus(TicketStatus.IN_PROGRESS);
+            } else {
+                ticket.setStatus(TicketStatus.OPEN);
             }
 
             if (event.getSuggestedCategory() != null && ticket.getCategory() == null) {
@@ -75,6 +79,8 @@ public class TicketProcessedConsumer {
             log.info("Ticket {} processed successfully by AI", ticket.getId());
         } catch (Exception exception) {
             log.error("Failed to process ticket processed event {}", event.getEventId(), exception);
+            throw new RuntimeException(
+                "Consumer failed processing ticket event " + event.getEventId(), exception);
         }
     }
 }

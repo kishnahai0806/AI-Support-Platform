@@ -174,7 +174,7 @@ class TicketProcessedConsumerTest {
     }
 
     @Test
-    void consume_failedAiEvent_keepsCurrentStatus() throws Exception {
+    void consume_failedAiEvent_revertsToOpen() throws Exception {
         TicketProcessedEvent failedEvent = TicketProcessedEvent.builder()
             .eventId(UUID.randomUUID())
             .ticketId(sampleTicket.getId())
@@ -200,7 +200,30 @@ class TicketProcessedConsumerTest {
 
         consumer.consume("{}");
 
-        Assertions.assertEquals(TicketStatus.AI_PROCESSING, sampleTicket.getStatus());
+        Assertions.assertEquals(TicketStatus.OPEN, sampleTicket.getStatus());
         Mockito.verify(ticketRepository, Mockito.times(1)).save(sampleTicket);
+    }
+
+    @Test
+    void consume_categoryAlreadySet_doesNotOverrideWithAiSuggestion() throws Exception {
+        Ticket ticketWithCategory = Ticket.builder()
+            .id(sampleTicket.getId())
+            .status(TicketStatus.AI_PROCESSING)
+            .aiProcessedAt(null)
+            .category(TicketCategory.BILLING)
+            .build();
+
+        Mockito.when(objectMapper.readValue(
+            ArgumentMatchers.anyString(),
+            ArgumentMatchers.eq(TicketProcessedEvent.class)
+        )).thenReturn(sampleEvent);
+        Mockito.when(ticketRepository.findById(sampleTicket.getId()))
+            .thenReturn(Optional.of(ticketWithCategory));
+        Mockito.when(ticketRepository.save(ticketWithCategory)).thenReturn(ticketWithCategory);
+
+        consumer.consume("{}");
+
+        Assertions.assertEquals(TicketCategory.BILLING, ticketWithCategory.getCategory());
+        Mockito.verify(ticketRepository, Mockito.times(1)).save(ticketWithCategory);
     }
 }
