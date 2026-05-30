@@ -7,6 +7,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -19,6 +20,7 @@ import org.springframework.web.cors.CorsConfiguration;
 
 @Configuration
 @EnableWebSecurity
+@EnableMethodSecurity
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
@@ -40,7 +42,7 @@ public class SecurityConfig {
                 configuration.setAllowedHeaders(List.of("*"));
                 return configuration;
             }))
-            .sessionManagement(session -> 
+            .sessionManagement(session ->
                 session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(HttpMethod.POST, "/api/v1/auth/register").permitAll()
@@ -49,9 +51,14 @@ public class SecurityConfig {
                 .requestMatchers("/actuator/health").permitAll()
                 .requestMatchers("/actuator/info").permitAll()
                 .requestMatchers("/actuator/prometheus").permitAll()
+                .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.PATCH, "/api/v1/tickets/*/status").hasAnyRole("AGENT", "ADMIN")
+                .requestMatchers(HttpMethod.PATCH, "/api/v1/tickets/*/assign").hasAnyRole("AGENT", "ADMIN")
+                .requestMatchers(HttpMethod.PATCH, "/api/v1/tickets/*/priority").hasAnyRole("AGENT", "ADMIN")
+                .requestMatchers(HttpMethod.DELETE, "/api/v1/tickets/*").hasRole("ADMIN")
                 .anyRequest().authenticated()
             )
-            .addFilterBefore(jwtAuthenticationFilter, 
+            .addFilterBefore(jwtAuthenticationFilter,
                 UsernamePasswordAuthenticationFilter.class)
             .build();
     }
