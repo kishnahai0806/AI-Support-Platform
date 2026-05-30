@@ -36,56 +36,57 @@ public class AiProcessingService {
 
     private final OpenAiProperties openAiProperties;
 
-    @Value("${spring.kafka.topics.ticket-processed}")
-    private String ticketProcessedTopic;
+    private final String ticketProcessedTopic;
 
     public AiProcessingService(
         OpenAiClientService openAiClientService,
         AiResponseAuditRepository aiResponseAuditRepository,
         KafkaTemplate<String, String> kafkaTemplate,
         ObjectMapper objectMapper,
-        OpenAiProperties openAiProperties
+        OpenAiProperties openAiProperties,
+        @Value("${spring.kafka.topics.ticket-processed}") String ticketProcessedTopic
     ) {
         this.openAiClientService = openAiClientService;
         this.aiResponseAuditRepository = aiResponseAuditRepository;
         this.kafkaTemplate = kafkaTemplate;
         this.objectMapper = objectMapper;
         this.openAiProperties = openAiProperties;
+        this.ticketProcessedTopic = ticketProcessedTopic;
     }
 
     public void processTicket(TicketCreatedEvent event) {
         long startTime = System.currentTimeMillis();
 
-        try {
-            OpenAiClientService.AiClassificationResult result =
-                openAiClientService.classifyTicket(
-                    event.getTitle(),
-                    event.getDescription(),
-                    event.getCategory()
-                );
-            long latencyMs = System.currentTimeMillis() - startTime;
-            boolean success = isSuccessful(result);
-            String errorMessage = success ? null : DEFAULT_FAILURE_MESSAGE;
-
-            saveAudit(event.getTicketId(), latencyMs, success, errorMessage);
-            publishProcessedEvent(event, result, latencyMs, success, errorMessage);
-
-            log.info(
-                "Ticket {} processed by AI: category={}, confidence={}, escalate={}, latency={}ms",
-                event.getTicketId(),
-                result.category(),
-                result.confidenceScore(),
-                result.shouldEscalate(),
-                latencyMs
+        OpenAiClientService.AiClassificationResult result =
+            openAiClientService.classifyTicket(
+                event.getTitle(),
+                event.getDescription(),
+                event.getCategory()
             );
-        } catch (Exception exception) {
-            long latencyMs = System.currentTimeMillis() - startTime;
-            String errorMessage = exception.getMessage();
-            log.error("Failed to process ticket {} with AI", event.getTicketId(), exception);
+        long latencyMs = System.currentTimeMillis() - startTime;
+        boolean success = isSuccessful(result);
+        String errorMessage = success ? null : DEFAULT_FAILURE_MESSAGE;
 
-            saveAudit(event.getTicketId(), latencyMs, false, errorMessage);
-            publishFailedEvent(event, latencyMs, errorMessage);
-        }
+        saveAudit(
+            event.getTicketId(),
+            latencyMs,
+            success,
+            errorMessage,
+            result.promptTokens(),
+            result.completionTokens(),
+            result.totalTokens()
+        );
+
+        publishProcessedEvent(event, result, latencyMs, success, errorMessage);
+
+        log.info(
+            "Ticket {} processed by AI: category={}, confidence={}, escalate={}, latency={}ms",
+            event.getTicketId(),
+            result.category(),
+            result.confidenceScore(),
+            result.shouldEscalate(),
+            latencyMs
+        );
     }
 
     private boolean isSuccessful(OpenAiClientService.AiClassificationResult result) {
@@ -97,13 +98,16 @@ public class AiProcessingService {
         UUID ticketId,
         long latencyMs,
         boolean success,
-        String errorMessage
+        String errorMessage,
+        int promptTokens,
+        int completionTokens,
+        int totalTokens
     ) {
         AiResponseAudit audit = AiResponseAudit.builder()
             .ticketId(ticketId)
-            .promptTokens(0)
-            .completionTokens(0)
-            .totalTokens(0)
+            .promptTokens(promptTokens)
+            .completionTokens(completionTokens)
+            .totalTokens(totalTokens)
             .modelName(openAiProperties.getModel())
             .latencyMs(latencyMs)
             .success(success)
@@ -127,35 +131,11 @@ public class AiProcessingService {
             .confidenceScore(result.confidenceScore())
             .aiEscalated(result.shouldEscalate())
             .modelUsed(openAiProperties.getModel())
-            .promptTokens(0)
-            .completionTokens(0)
-            .totalTokens(0)
+            .promptTokens(result.promptTokens())
+            .completionTokens(result.completionTokens())
+            .totalTokens(result.totalTokens())
             .latencyMs(latencyMs)
             .success(success)
-            .errorMessage(errorMessage)
-            .processedAt(LocalDateTime.now())
-            .build();
-
-        publish(processedEvent);
-    }
-
-    private void publishFailedEvent(
-        TicketCreatedEvent event,
-        long latencyMs,
-        String errorMessage
-    ) {
-        TicketProcessedEvent processedEvent = TicketProcessedEvent.builder()
-            .eventId(UUID.randomUUID())
-            .ticketId(event.getTicketId())
-            .suggestedCategory(TicketCategory.GENERAL)
-            .confidenceScore(DEFAULT_CONFIDENCE_SCORE)
-            .aiEscalated(false)
-            .modelUsed(openAiProperties.getModel())
-            .promptTokens(0)
-            .completionTokens(0)
-            .totalTokens(0)
-            .latencyMs(latencyMs)
-            .success(false)
             .errorMessage(errorMessage)
             .processedAt(LocalDateTime.now())
             .build();

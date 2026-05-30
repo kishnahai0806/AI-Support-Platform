@@ -18,12 +18,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.ArgumentMatchers;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.kafka.core.KafkaTemplate;
-import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
 class AiProcessingServiceTest {
@@ -45,7 +43,6 @@ class AiProcessingServiceTest {
     @Mock
     private OpenAiProperties openAiProperties;
 
-    @InjectMocks
     private AiProcessingService aiProcessingService;
 
     private TicketCreatedEvent sampleEvent;
@@ -56,13 +53,16 @@ class AiProcessingServiceTest {
 
     @BeforeEach
     void setUp() {
-        UUID ticketId = UUID.randomUUID();
-
-        ReflectionTestUtils.setField(
-            aiProcessingService,
-            "ticketProcessedTopic",
+        aiProcessingService = new AiProcessingService(
+            openAiClientService,
+            aiResponseAuditRepository,
+            kafkaTemplate,
+            objectMapper,
+            openAiProperties,
             TICKET_PROCESSED_TOPIC
         );
+
+        UUID ticketId = UUID.randomUUID();
 
         sampleEvent = TicketCreatedEvent.builder()
             .eventId(UUID.randomUUID())
@@ -81,14 +81,16 @@ class AiProcessingServiceTest {
             TicketCategory.TECHNICAL,
             new BigDecimal("0.9500"),
             false,
-            "Clear technical issue"
+            "Clear technical issue",
+            100, 50, 150
         );
 
         defaultResult = new OpenAiClientService.AiClassificationResult(
             TicketCategory.GENERAL,
             new BigDecimal("0.5000"),
             false,
-            "Classification failed"
+            "Classification failed",
+            0, 0, 0
         );
 
         Mockito.when(openAiProperties.getModel()).thenReturn("gpt-4o-mini");
@@ -119,6 +121,9 @@ class AiProcessingServiceTest {
             ArgumentMatchers.anyString()
         );
         Assertions.assertTrue(auditCaptor.getValue().isSuccess());
+        Assertions.assertEquals(100, auditCaptor.getValue().getPromptTokens());
+        Assertions.assertEquals(50, auditCaptor.getValue().getCompletionTokens());
+        Assertions.assertEquals(150, auditCaptor.getValue().getTotalTokens());
     }
 
     @Test
@@ -144,28 +149,25 @@ class AiProcessingServiceTest {
     }
 
     @Test
-    void processTicket_openAiThrowsException_savesFailedAuditAndPublishes() throws Exception {
+    void processTicket_dbSaveFails_throwsException() {
         Mockito.when(openAiClientService.classifyTicket(
             sampleEvent.getTitle(),
             sampleEvent.getDescription(),
             sampleEvent.getCategory()
-        )).thenThrow(new IllegalStateException("OpenAI unavailable"));
-        Mockito.when(objectMapper.writeValueAsString(ArgumentMatchers.any(TicketProcessedEvent.class)))
-            .thenReturn("{}");
-        Mockito.when(kafkaTemplate.send(
-            ArgumentMatchers.eq(TICKET_PROCESSED_TOPIC),
-            ArgumentMatchers.eq(sampleEvent.getTicketId().toString()),
-            ArgumentMatchers.anyString()
-        )).thenReturn(null);
+        )).thenReturn(successResult);
+        Mockito.when(aiResponseAuditRepository.save(ArgumentMatchers.any(AiResponseAudit.class)))
+            .thenThrow(new RuntimeException("DB connection lost"));
 
-        aiProcessingService.processTicket(sampleEvent);
+        Assertions.assertThrows(
+            RuntimeException.class,
+            () -> aiProcessingService.processTicket(sampleEvent)
+        );
 
-        ArgumentCaptor<AiResponseAudit> auditCaptor = ArgumentCaptor.forClass(AiResponseAudit.class);
-        Mockito.verify(aiResponseAuditRepository, Mockito.times(1)).save(auditCaptor.capture());
-        Assertions.assertFalse(auditCaptor.getValue().isSuccess());
-        Mockito.verify(kafkaTemplate, Mockito.times(1)).send(
-            ArgumentMatchers.eq(TICKET_PROCESSED_TOPIC),
-            ArgumentMatchers.eq(sampleEvent.getTicketId().toString()),
+        Mockito.verify(aiResponseAuditRepository, Mockito.times(1))
+            .save(ArgumentMatchers.any(AiResponseAudit.class));
+        Mockito.verify(kafkaTemplate, Mockito.never()).send(
+            ArgumentMatchers.anyString(),
+            ArgumentMatchers.anyString(),
             ArgumentMatchers.anyString()
         );
     }
@@ -194,7 +196,8 @@ class AiProcessingServiceTest {
                 TicketCategory.BILLING,
                 new BigDecimal("0.9500"),
                 true,
-                "Billing issue needs escalation"
+                "Billing issue needs escalation",
+                120, 60, 180
             );
 
         Mockito.when(openAiClientService.classifyTicket(
@@ -223,6 +226,7 @@ class AiProcessingServiceTest {
         );
         Assertions.assertTrue(eventCaptor.getValue().isAiEscalated());
         Assertions.assertEquals(TicketCategory.BILLING, eventCaptor.getValue().getSuggestedCategory());
+        Assertions.assertEquals(120, eventCaptor.getValue().getPromptTokens());
         Assertions.assertEquals("{}", payloadCaptor.getValue());
     }
 }

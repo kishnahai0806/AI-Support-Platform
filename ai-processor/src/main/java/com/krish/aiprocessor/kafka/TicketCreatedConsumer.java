@@ -26,7 +26,7 @@ public class TicketCreatedConsumer {
 
     @KafkaListener(
         topics = "${spring.kafka.topics.ticket-created}",
-        groupId = "ai-processor-group"
+        groupId = "${spring.kafka.consumer.group-id}"
     )
     public void consume(String message) {
         TicketCreatedEvent event;
