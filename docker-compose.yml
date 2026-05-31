@@ -76,9 +76,21 @@ services:
     container_name: support-jaeger
     ports:
       - "16686:16686"
-      - "4317:4317"
     environment:
       COLLECTOR_OTLP_ENABLED: "true"
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.96.0
+    container_name: support-otel-collector
+    depends_on:
+      - jaeger
+    command: ["--config=/etc/otel-collector-config.yml"]
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+      - "8889:8889"
+    volumes:
+      - ./otel-collector/otel-collector-config.yml:/etc/otel-collector-config.yml
 
   alertmanager:
     image: prom/alertmanager:v0.27.0
