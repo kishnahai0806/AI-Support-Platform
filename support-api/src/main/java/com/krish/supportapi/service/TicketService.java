@@ -71,7 +71,7 @@ public class TicketService {
     }
 
     public TicketResponse createTicket(CreateTicketRequest request, UUID customerId) {
-        Sample sample = Sample.start(meterRegistry);
+        Sample sample = Timer.start(meterRegistry);
 
         User customer = userRepository.findById(customerId)
             .orElseThrow(() -> new TicketNotFoundException("Customer not found"));

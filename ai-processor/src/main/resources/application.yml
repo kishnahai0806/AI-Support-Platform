@@ -58,6 +58,8 @@ logging:
   level:
     root: INFO
     com.krish.aiprocessor: DEBUG
+  pattern:
+    console: '{"ts":"%d{yyyy-MM-dd HH:mm:ss.SSS}","lvl":"%p","svc":"ai-processor","trace":"%X{traceId:-}","span":"%X{spanId:-}","log":"%logger{36}","msg":"%replace(%message){''\"'',''\\\"''}"}%n'
 
 openai:
   api-key: ${OPENAI_API_KEY}

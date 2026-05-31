@@ -65,6 +65,8 @@ logging:
   level:
     root: INFO
     com.krish.supportapi: DEBUG
+  pattern:
+    console: '{"ts":"%d{yyyy-MM-dd HH:mm:ss.SSS}","lvl":"%p","svc":"support-api","trace":"%X{traceId:-}","span":"%X{spanId:-}","reqId":"%X{requestId:-}","method":"%X{method:-}","path":"%X{path:-}","log":"%logger{36}","msg":"%replace(%message){''\"'',''\\\"''}"}%n'
 
 jwt:
   secret: ${JWT_SECRET}

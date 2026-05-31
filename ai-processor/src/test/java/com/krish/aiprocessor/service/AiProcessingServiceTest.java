@@ -9,6 +9,7 @@ import com.krish.aiprocessor.domain.enums.TicketPriority;
 import com.krish.aiprocessor.event.TicketCreatedEvent;
 import com.krish.aiprocessor.event.TicketProcessedEvent;
 import com.krish.aiprocessor.repository.AiResponseAuditRepository;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -45,6 +46,8 @@ class AiProcessingServiceTest {
 
     private AiProcessingService aiProcessingService;
 
+    private SimpleMeterRegistry meterRegistry;
+
     private TicketCreatedEvent sampleEvent;
 
     private OpenAiClientService.AiClassificationResult successResult;
@@ -53,13 +56,16 @@ class AiProcessingServiceTest {
 
     @BeforeEach
     void setUp() {
+        meterRegistry = new SimpleMeterRegistry();
+
         aiProcessingService = new AiProcessingService(
             openAiClientService,
             aiResponseAuditRepository,
             kafkaTemplate,
             objectMapper,
             openAiProperties,
-            TICKET_PROCESSED_TOPIC
+            TICKET_PROCESSED_TOPIC,
+            meterRegistry
         );
 
         UUID ticketId = UUID.randomUUID();

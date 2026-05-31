@@ -65,7 +65,7 @@ public class AiProcessingService {
     }
 
     public void processTicket(TicketCreatedEvent event) {
-        Sample sample = Sample.start(meterRegistry);
+        Sample sample = Timer.start(meterRegistry);
         long startTime = System.currentTimeMillis();
 
         try {
