@@ -12,12 +12,16 @@ import com.krish.supportapi.exception.InvalidTokenException;
 import com.krish.supportapi.repository.RefreshTokenRepository;
 import com.krish.supportapi.repository.UserRepository;
 import com.krish.supportapi.security.JwtTokenProvider;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Tags;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -41,6 +45,8 @@ public class AuthService {
 
     private final StringRedisTemplate stringRedisTemplate;
 
+    private final MeterRegistry meterRegistry;
+
     public AuthService(
         UserRepository userRepository,
         RefreshTokenRepository refreshTokenRepository,
@@ -48,7 +54,8 @@ public class AuthService {
         JwtProperties jwtProperties,
         PasswordEncoder passwordEncoder,
         AuthenticationManager authenticationManager,
-        StringRedisTemplate stringRedisTemplate
+        StringRedisTemplate stringRedisTemplate,
+        MeterRegistry meterRegistry
     ) {
         this.userRepository = userRepository;
         this.refreshTokenRepository = refreshTokenRepository;
@@ -57,6 +64,7 @@ public class AuthService {
         this.passwordEncoder = passwordEncoder;
         this.authenticationManager = authenticationManager;
         this.stringRedisTemplate = stringRedisTemplate;
+        this.meterRegistry = meterRegistry;
     }
 
     public AuthResponse register(RegisterRequest request) {
@@ -75,6 +83,9 @@ public class AuthService {
             .build();
 
         User savedUser = userRepository.save(user);
+        Counter.builder("users.registered.total")
+            .register(meterRegistry)
+            .increment();
         String accessToken = jwtTokenProvider.generateAccessToken(savedUser);
         String refreshToken = jwtTokenProvider.generateRefreshToken(savedUser);
 
@@ -84,9 +95,21 @@ public class AuthService {
     }
 
     public AuthResponse login(LoginRequest request) {
-        authenticationManager.authenticate(
-            new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword())
-        );
+        try {
+            authenticationManager.authenticate(
+                new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword())
+            );
+            Counter.builder("users.login.total")
+                .tags(Tags.of("success", "true"))
+                .register(meterRegistry)
+                .increment();
+        } catch (BadCredentialsException exception) {
+            Counter.builder("users.login.total")
+                .tags(Tags.of("success", "false"))
+                .register(meterRegistry)
+                .increment();
+            throw exception;
+        }
 
         User user = userRepository.findByEmail(request.getEmail())
             .orElseThrow(() -> new InvalidTokenException("User not found"));

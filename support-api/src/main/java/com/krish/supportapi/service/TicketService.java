@@ -19,6 +19,11 @@ import com.krish.supportapi.exception.TicketNotFoundException;
 import com.krish.supportapi.repository.TicketRepository;
 import com.krish.supportapi.repository.TicketSpecification;
 import com.krish.supportapi.repository.UserRepository;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Tags;
+import io.micrometer.core.instrument.Timer;
+import io.micrometer.core.instrument.Timer.Sample;
 import java.time.LocalDateTime;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
@@ -47,21 +52,27 @@ public class TicketService {
 
     private final StringRedisTemplate stringRedisTemplate;
 
+    private final MeterRegistry meterRegistry;
+
     public TicketService(
         TicketRepository ticketRepository,
         UserRepository userRepository,
         KafkaTemplate<String, String> kafkaTemplate,
         ObjectMapper objectMapper,
-        StringRedisTemplate stringRedisTemplate
+        StringRedisTemplate stringRedisTemplate,
+        MeterRegistry meterRegistry
     ) {
         this.ticketRepository = ticketRepository;
         this.userRepository = userRepository;
         this.kafkaTemplate = kafkaTemplate;
         this.objectMapper = objectMapper;
         this.stringRedisTemplate = stringRedisTemplate;
+        this.meterRegistry = meterRegistry;
     }
 
     public TicketResponse createTicket(CreateTicketRequest request, UUID customerId) {
+        Sample sample = Sample.start(meterRegistry);
+
         User customer = userRepository.findById(customerId)
             .orElseThrow(() -> new TicketNotFoundException("Customer not found"));
 
@@ -81,6 +92,8 @@ public class TicketService {
             .build();
 
         Ticket savedTicket = ticketRepository.save(ticket);
+        sample.stop(Timer.builder("ticket.creation.duration")
+            .register(meterRegistry));
 
         TicketCreatedEvent event = TicketCreatedEvent.builder()
             .eventId(UUID.randomUUID())
@@ -103,6 +116,15 @@ public class TicketService {
         }
 
         kafkaTemplate.send(TICKET_CREATED_TOPIC, savedTicket.getId().toString(), serializedEvent);
+        Counter.builder("tickets.created.total")
+            .tags(Tags.of(
+                "priority", savedTicket.getPriority().name(),
+                "category", savedTicket.getCategory() != null
+                    ? savedTicket.getCategory().name()
+                    : "NONE"
+            ))
+            .register(meterRegistry)
+            .increment();
         stringRedisTemplate.delete(ANALYTICS_CACHE_KEY);
 
         return mapToResponse(savedTicket);
