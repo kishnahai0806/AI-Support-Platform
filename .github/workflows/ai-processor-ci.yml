@@ -1,12 +1,17 @@
 name: ai-processor CI/CD
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
-    paths: [ai-processor/**]
+    paths:
+      - ai-processor/**
+      - .github/workflows/ai-processor-ci.yml
   pull_request:
     branches: [main]
-    paths: [ai-processor/**]
+    paths:
+      - ai-processor/**
+      - .github/workflows/ai-processor-ci.yml
 
 jobs:
   test:
