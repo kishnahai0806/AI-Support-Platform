@@ -77,7 +77,6 @@ public class AiProcessingService {
                 );
             long latencyMs = System.currentTimeMillis() - startTime;
             boolean success = isSuccessful(result);
-            recordProcessingMetrics(success, result);
             String errorMessage = success ? null : DEFAULT_FAILURE_MESSAGE;
 
             saveAudit(
@@ -90,6 +89,8 @@ public class AiProcessingService {
                 result.totalTokens()
             );
 
+            recordProcessingMetrics(success, result);
+
             publishProcessedEvent(event, result, latencyMs, success, errorMessage);
 
             log.info(
@@ -101,13 +102,8 @@ public class AiProcessingService {
                 latencyMs
             );
         } catch (RuntimeException exception) {
-            Counter.builder("ai.processing.total")
-                .tags(Tags.of(
-                    "success", "false",
-                    "model", openAiProperties.getModel()
-                ))
-                .register(meterRegistry)
-                .increment();
+            log.error("Failed to process ticket {} due to infrastructure failure",
+                event.getTicketId(), exception);
             throw exception;
         } finally {
             sample.stop(Timer.builder("ai.processing.duration")
