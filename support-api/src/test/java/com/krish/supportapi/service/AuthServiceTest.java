@@ -23,6 +23,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -59,6 +60,9 @@ class AuthServiceTest {
 
     @Mock
     private ValueOperations<String, String> valueOperations;
+
+    @Mock
+    private MeterRegistry meterRegistry;
 
     @InjectMocks
     private AuthService authService;
