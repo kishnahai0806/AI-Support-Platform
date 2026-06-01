@@ -49,6 +49,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class AdminControllerIT {
 
     @Container
+    @SuppressWarnings("resource")
     static final PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine")
         .withDatabaseName("support_db")
         .withUsername("postgres")
@@ -102,6 +103,7 @@ class AdminControllerIT {
 
         String adminEmail = uniqueEmail();
         registerUser(registerRequest(adminEmail, password));
+        Thread.sleep(1100);
         updateUserRole(adminEmail, UserRole.ADMIN);
         adminToken = loginAndExtractAccessToken(loginRequest(adminEmail, password));
     }

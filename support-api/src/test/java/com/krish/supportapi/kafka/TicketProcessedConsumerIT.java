@@ -207,6 +207,34 @@ class TicketProcessedConsumerIT {
             });
     }
 
+    @Test
+    void processedEvent_failedAi_updatesTicketToOpen() throws Exception {
+        TicketProcessedEvent event = TicketProcessedEvent.builder()
+            .eventId(UUID.randomUUID())
+            .ticketId(ticketId)
+            .suggestedCategory(TicketCategory.GENERAL)
+            .confidenceScore(new BigDecimal("0.5000"))
+            .aiEscalated(false)
+            .success(false)
+            .modelUsed("gpt-4o-mini")
+            .promptTokens(0)
+            .completionTokens(0)
+            .totalTokens(0)
+            .latencyMs(500L)
+            .errorMessage("AI classification failed")
+            .processedAt(LocalDateTime.now())
+            .build();
+
+        String json = objectMapper.writeValueAsString(event);
+        kafkaTemplate.send("ticket.processed", ticketId.toString(), json).get();
+
+        await().atMost(5, TimeUnit.SECONDS).untilAsserted(() -> {
+            Ticket updated = ticketRepository.findById(ticketId).orElseThrow();
+            assertThat(updated.getStatus()).isEqualTo(TicketStatus.OPEN);
+            assertThat(updated.getAiProcessedAt()).isNotNull();
+        });
+    }
+
     @SpringBootApplication(scanBasePackages = "com.krish.supportapi")
     @EntityScan("com.krish.supportapi.domain.entity")
     @EnableJpaRepositories("com.krish.supportapi.repository")
