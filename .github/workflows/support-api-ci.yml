@@ -1,12 +1,17 @@
 name: support-api CI/CD
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
-    paths: [support-api/**]
+    paths:
+      - support-api/**
+      - .github/workflows/support-api-ci.yml
   pull_request:
     branches: [main]
-    paths: [support-api/**]
+    paths:
+      - support-api/**
+      - .github/workflows/support-api-ci.yml
 
 jobs:
   test:
