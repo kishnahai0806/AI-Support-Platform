@@ -14,7 +14,6 @@ import com.krish.supportapi.repository.UserRepository;
 import com.krish.supportapi.security.JwtTokenProvider;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
-import io.micrometer.core.instrument.Tags;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -47,6 +46,12 @@ public class AuthService {
 
     private final MeterRegistry meterRegistry;
 
+    private final Counter registeredUsersCounter;
+
+    private final Counter loginSuccessCounter;
+
+    private final Counter loginFailureCounter;
+
     public AuthService(
         UserRepository userRepository,
         RefreshTokenRepository refreshTokenRepository,
@@ -65,6 +70,14 @@ public class AuthService {
         this.authenticationManager = authenticationManager;
         this.stringRedisTemplate = stringRedisTemplate;
         this.meterRegistry = meterRegistry;
+        this.registeredUsersCounter = Counter.builder("users.registered.total")
+            .register(meterRegistry);
+        this.loginSuccessCounter = Counter.builder("users.login.total")
+            .tag("success", "true")
+            .register(meterRegistry);
+        this.loginFailureCounter = Counter.builder("users.login.total")
+            .tag("success", "false")
+            .register(meterRegistry);
     }
 
     public AuthResponse register(RegisterRequest request) {
@@ -83,9 +96,7 @@ public class AuthService {
             .build();
 
         User savedUser = userRepository.save(user);
-        Counter.builder("users.registered.total")
-            .register(meterRegistry)
-            .increment();
+        registeredUsersCounter.increment();
         String accessToken = jwtTokenProvider.generateAccessToken(savedUser);
         String refreshToken = jwtTokenProvider.generateRefreshToken(savedUser);
 
@@ -99,15 +110,9 @@ public class AuthService {
             authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword())
             );
-            Counter.builder("users.login.total")
-                .tags(Tags.of("success", "true"))
-                .register(meterRegistry)
-                .increment();
+            loginSuccessCounter.increment();
         } catch (BadCredentialsException exception) {
-            Counter.builder("users.login.total")
-                .tags(Tags.of("success", "false"))
-                .register(meterRegistry)
-                .increment();
+            loginFailureCounter.increment();
             throw exception;
         }
 

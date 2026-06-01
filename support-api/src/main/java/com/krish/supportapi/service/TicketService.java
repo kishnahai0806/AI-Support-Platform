@@ -73,61 +73,64 @@ public class TicketService {
     public TicketResponse createTicket(CreateTicketRequest request, UUID customerId) {
         Sample sample = Timer.start(meterRegistry);
 
-        User customer = userRepository.findById(customerId)
-            .orElseThrow(() -> new TicketNotFoundException("Customer not found"));
-
-        String ticketNumber = "TKT-" + String.format("%06d", ticketRepository.nextTicketNumber());
-        TicketPriority priority = request.getPriority() != null
-            ? request.getPriority()
-            : TicketPriority.MEDIUM;
-
-        Ticket ticket = Ticket.builder()
-            .ticketNumber(ticketNumber)
-            .title(request.getTitle())
-            .description(request.getDescription())
-            .priority(priority)
-            .category(request.getCategory())
-            .status(TicketStatus.OPEN)
-            .customer(customer)
-            .build();
-
-        Ticket savedTicket = ticketRepository.save(ticket);
-        sample.stop(Timer.builder("ticket.creation.duration")
-            .register(meterRegistry));
-
-        TicketCreatedEvent event = TicketCreatedEvent.builder()
-            .eventId(UUID.randomUUID())
-            .ticketId(savedTicket.getId())
-            .ticketNumber(savedTicket.getTicketNumber())
-            .title(savedTicket.getTitle())
-            .description(savedTicket.getDescription())
-            .category(savedTicket.getCategory())
-            .priority(savedTicket.getPriority())
-            .customerId(customer.getId())
-            .customerEmail(customer.getEmail())
-            .createdAt(savedTicket.getCreatedAt())
-            .build();
-
-        String serializedEvent;
         try {
-            serializedEvent = objectMapper.writeValueAsString(event);
-        } catch (JsonProcessingException exception) {
-            throw new RuntimeException("Failed to serialize ticket created event", exception);
+            User customer = userRepository.findById(customerId)
+                .orElseThrow(() -> new TicketNotFoundException("Customer not found"));
+
+            String ticketNumber = "TKT-" + String.format("%06d", ticketRepository.nextTicketNumber());
+            TicketPriority priority = request.getPriority() != null
+                ? request.getPriority()
+                : TicketPriority.MEDIUM;
+
+            Ticket ticket = Ticket.builder()
+                .ticketNumber(ticketNumber)
+                .title(request.getTitle())
+                .description(request.getDescription())
+                .priority(priority)
+                .category(request.getCategory())
+                .status(TicketStatus.OPEN)
+                .customer(customer)
+                .build();
+
+            Ticket savedTicket = ticketRepository.save(ticket);
+
+            TicketCreatedEvent event = TicketCreatedEvent.builder()
+                .eventId(UUID.randomUUID())
+                .ticketId(savedTicket.getId())
+                .ticketNumber(savedTicket.getTicketNumber())
+                .title(savedTicket.getTitle())
+                .description(savedTicket.getDescription())
+                .category(savedTicket.getCategory())
+                .priority(savedTicket.getPriority())
+                .customerId(customer.getId())
+                .customerEmail(customer.getEmail())
+                .createdAt(savedTicket.getCreatedAt())
+                .build();
+
+            String serializedEvent;
+            try {
+                serializedEvent = objectMapper.writeValueAsString(event);
+            } catch (JsonProcessingException exception) {
+                throw new RuntimeException("Failed to serialize ticket created event", exception);
+            }
+
+            kafkaTemplate.send(TICKET_CREATED_TOPIC, savedTicket.getId().toString(), serializedEvent);
+            Counter.builder("tickets.created.total")
+                .tags(Tags.of(
+                    "priority", savedTicket.getPriority().name(),
+                    "category", savedTicket.getCategory() != null
+                        ? savedTicket.getCategory().name()
+                        : "NONE"
+                ))
+                .register(meterRegistry)
+                .increment();
+            stringRedisTemplate.delete(ANALYTICS_CACHE_KEY);
+
+            return mapToResponse(savedTicket);
+        } finally {
+            sample.stop(Timer.builder("ticket.creation.duration")
+                .register(meterRegistry));
         }
-
-        kafkaTemplate.send(TICKET_CREATED_TOPIC, savedTicket.getId().toString(), serializedEvent);
-        Counter.builder("tickets.created.total")
-            .tags(Tags.of(
-                "priority", savedTicket.getPriority().name(),
-                "category", savedTicket.getCategory() != null
-                    ? savedTicket.getCategory().name()
-                    : "NONE"
-            ))
-            .register(meterRegistry)
-            .increment();
-        stringRedisTemplate.delete(ANALYTICS_CACHE_KEY);
-
-        return mapToResponse(savedTicket);
     }
 
     public Page<TicketResponse> getTickets(
