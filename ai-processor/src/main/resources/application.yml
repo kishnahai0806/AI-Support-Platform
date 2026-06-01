@@ -42,11 +42,27 @@ management:
     metrics:
       export:
         enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+  tracing:
+    sampling:
+      probability: 1.0
+
+otel:
+  exporter:
+    otlp:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4317}
+  resource:
+    attributes:
+      service.name: ai-processor
 
 logging:
   level:
     root: INFO
     com.krish.aiprocessor: DEBUG
+  pattern:
+    console: '{"ts":"%d{yyyy-MM-dd HH:mm:ss.SSS}","lvl":"%p","svc":"ai-processor","trace":"%X{traceId:-}","span":"%X{spanId:-}","log":"%logger{36}","msg":"%replace(%message){''\"'',''\\\"''}"}%n'
 
 openai:
   api-key: ${OPENAI_API_KEY}

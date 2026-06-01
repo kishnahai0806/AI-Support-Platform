@@ -49,11 +49,27 @@ management:
     metrics:
       export:
         enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+  tracing:
+    sampling:
+      probability: 1.0
+
+otel:
+  exporter:
+    otlp:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4317}
+  resource:
+    attributes:
+      service.name: support-api
 
 logging:
   level:
     root: INFO
     com.krish.supportapi: DEBUG
+  pattern:
+    console: '{"ts":"%d{yyyy-MM-dd HH:mm:ss.SSS}","lvl":"%p","svc":"support-api","trace":"%X{traceId:-}","span":"%X{spanId:-}","reqId":"%X{requestId:-}","method":"%X{method:-}","path":"%X{path:-}","log":"%logger{36}","msg":"%replace(%message){''\"'',''\\\"''}"}%n'
 
 jwt:
   secret: ${JWT_SECRET}

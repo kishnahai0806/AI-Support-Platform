@@ -8,6 +8,12 @@ import com.krish.aiprocessor.domain.enums.TicketCategory;
 import com.krish.aiprocessor.event.TicketCreatedEvent;
 import com.krish.aiprocessor.event.TicketProcessedEvent;
 import com.krish.aiprocessor.repository.AiResponseAuditRepository;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.DistributionSummary;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Tags;
+import io.micrometer.core.instrument.Timer;
+import io.micrometer.core.instrument.Timer.Sample;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -38,13 +44,16 @@ public class AiProcessingService {
 
     private final String ticketProcessedTopic;
 
+    private final MeterRegistry meterRegistry;
+
     public AiProcessingService(
         OpenAiClientService openAiClientService,
         AiResponseAuditRepository aiResponseAuditRepository,
         KafkaTemplate<String, String> kafkaTemplate,
         ObjectMapper objectMapper,
         OpenAiProperties openAiProperties,
-        @Value("${spring.kafka.topics.ticket-processed}") String ticketProcessedTopic
+        @Value("${spring.kafka.topics.ticket-processed}") String ticketProcessedTopic,
+        MeterRegistry meterRegistry
     ) {
         this.openAiClientService = openAiClientService;
         this.aiResponseAuditRepository = aiResponseAuditRepository;
@@ -52,46 +61,78 @@ public class AiProcessingService {
         this.objectMapper = objectMapper;
         this.openAiProperties = openAiProperties;
         this.ticketProcessedTopic = ticketProcessedTopic;
+        this.meterRegistry = meterRegistry;
     }
 
     public void processTicket(TicketCreatedEvent event) {
+        Sample sample = Timer.start(meterRegistry);
         long startTime = System.currentTimeMillis();
 
-        OpenAiClientService.AiClassificationResult result =
-            openAiClientService.classifyTicket(
-                event.getTitle(),
-                event.getDescription(),
-                event.getCategory()
+        try {
+            OpenAiClientService.AiClassificationResult result =
+                openAiClientService.classifyTicket(
+                    event.getTitle(),
+                    event.getDescription(),
+                    event.getCategory()
+                );
+            long latencyMs = System.currentTimeMillis() - startTime;
+            boolean success = isSuccessful(result);
+            String errorMessage = success ? null : DEFAULT_FAILURE_MESSAGE;
+
+            saveAudit(
+                event.getTicketId(),
+                latencyMs,
+                success,
+                errorMessage,
+                result.promptTokens(),
+                result.completionTokens(),
+                result.totalTokens()
             );
-        long latencyMs = System.currentTimeMillis() - startTime;
-        boolean success = isSuccessful(result);
-        String errorMessage = success ? null : DEFAULT_FAILURE_MESSAGE;
 
-        saveAudit(
-            event.getTicketId(),
-            latencyMs,
-            success,
-            errorMessage,
-            result.promptTokens(),
-            result.completionTokens(),
-            result.totalTokens()
-        );
+            recordProcessingMetrics(success, result);
 
-        publishProcessedEvent(event, result, latencyMs, success, errorMessage);
+            publishProcessedEvent(event, result, latencyMs, success, errorMessage);
 
-        log.info(
-            "Ticket {} processed by AI: category={}, confidence={}, escalate={}, latency={}ms",
-            event.getTicketId(),
-            result.category(),
-            result.confidenceScore(),
-            result.shouldEscalate(),
-            latencyMs
-        );
+            log.info(
+                "Ticket {} processed by AI: category={}, confidence={}, escalate={}, latency={}ms",
+                event.getTicketId(),
+                result.category(),
+                result.confidenceScore(),
+                result.shouldEscalate(),
+                latencyMs
+            );
+        } catch (RuntimeException exception) {
+            log.error("Failed to process ticket {} due to infrastructure failure",
+                event.getTicketId(), exception);
+            throw exception;
+        } finally {
+            sample.stop(Timer.builder("ai.processing.duration")
+                .register(meterRegistry));
+        }
     }
 
     private boolean isSuccessful(OpenAiClientService.AiClassificationResult result) {
         return result.category() != TicketCategory.GENERAL
             || result.confidenceScore().compareTo(DEFAULT_CONFIDENCE_SCORE) > 0;
+    }
+
+    private void recordProcessingMetrics(
+        boolean success,
+        OpenAiClientService.AiClassificationResult result
+    ) {
+        Counter.builder("ai.processing.total")
+            .tags(Tags.of(
+                "success", Boolean.toString(success),
+                "model", openAiProperties.getModel()
+            ))
+            .register(meterRegistry)
+            .increment();
+
+        if (success) {
+            DistributionSummary.builder("ai.confidence.score")
+                .register(meterRegistry)
+                .record(result.confidenceScore().doubleValue());
+        }
     }
 
     private void saveAudit(
