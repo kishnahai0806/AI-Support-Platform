@@ -20,6 +20,7 @@ public class CreateTicketRequest {
     private String title;
 
     @NotBlank
+    @Size(max = 10000)
     private String description;
 
     private TicketPriority priority;
