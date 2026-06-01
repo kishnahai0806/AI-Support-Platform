@@ -80,7 +80,7 @@ jobs:
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && secrets.ORACLE_HOST != ''
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
       - name: Deploy to Oracle Cloud
         uses: appleboy/ssh-action@v1.0.3
