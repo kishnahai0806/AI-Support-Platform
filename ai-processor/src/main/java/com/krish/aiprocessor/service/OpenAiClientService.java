@@ -1,6 +1,5 @@
 package com.krish.aiprocessor.service;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.krish.aiprocessor.config.OpenAiProperties;
 import com.krish.aiprocessor.domain.enums.TicketCategory;
