@@ -17,7 +17,6 @@ import com.krish.supportapi.repository.UserRepository;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
-import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -33,6 +32,9 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.kafka.core.KafkaTemplate;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @ExtendWith(MockitoExtension.class)
 class TicketServiceTest {
@@ -114,8 +116,8 @@ class TicketServiceTest {
 
         TicketResponse response = ticketService.createTicket(createRequest, sampleCustomer.getId());
 
-        Assertions.assertNotNull(response);
-        Assertions.assertEquals(sampleTicket.getTitle(), response.getTitle());
+        assertThat(response).isNotNull();
+        assertThat(response.getTitle()).isEqualTo(sampleTicket.getTitle());
         Mockito.verify(ticketRepository, Mockito.times(1)).save(ArgumentMatchers.any(Ticket.class));
         Mockito.verify(kafkaTemplate, Mockito.times(1)).send(
             ArgumentMatchers.anyString(),
@@ -128,10 +130,8 @@ class TicketServiceTest {
     void createTicket_customerNotFound_throwsException() {
         Mockito.when(userRepository.findById(sampleCustomer.getId())).thenReturn(Optional.empty());
 
-        Assertions.assertThrows(
-            RuntimeException.class,
-            () -> ticketService.createTicket(createRequest, sampleCustomer.getId())
-        );
+        assertThatThrownBy(() -> ticketService.createTicket(createRequest, sampleCustomer.getId()))
+            .isInstanceOf(RuntimeException.class);
 
         Mockito.verify(ticketRepository, Mockito.never()).save(ArgumentMatchers.any(Ticket.class));
     }
@@ -153,7 +153,7 @@ class TicketServiceTest {
             pageable
         );
 
-        Assertions.assertNotNull(response);
+        assertThat(response).isNotNull();
         Mockito.verify(ticketRepository, Mockito.times(1))
             .findAll(ArgumentMatchers.any(Specification.class), ArgumentMatchers.any(Pageable.class));
     }
@@ -175,7 +175,7 @@ class TicketServiceTest {
             pageable
         );
 
-        Assertions.assertNotNull(response);
+        assertThat(response).isNotNull();
         Mockito.verify(ticketRepository, Mockito.times(1))
             .findAll(ArgumentMatchers.any(Specification.class), ArgumentMatchers.any(Pageable.class));
     }
@@ -190,17 +190,15 @@ class TicketServiceTest {
             UserRole.CUSTOMER
         );
 
-        Assertions.assertNotNull(response);
+        assertThat(response).isNotNull();
     }
 
     @Test
     void getTicket_asCustomer_otherTicket_throwsException() {
         Mockito.when(ticketRepository.findById(sampleTicket.getId())).thenReturn(Optional.of(sampleTicket));
 
-        Assertions.assertThrows(
-            RuntimeException.class,
-            () -> ticketService.getTicket(sampleTicket.getId(), UUID.randomUUID(), UserRole.CUSTOMER)
-        );
+        assertThatThrownBy(() -> ticketService.getTicket(sampleTicket.getId(), UUID.randomUUID(), UserRole.CUSTOMER))
+            .isInstanceOf(RuntimeException.class);
     }
 
     @Test
@@ -213,9 +211,9 @@ class TicketServiceTest {
 
         TicketResponse response = ticketService.updateStatus(sampleTicket.getId(), request, sampleAgent.getId());
 
-        Assertions.assertNotNull(response);
-        Assertions.assertEquals(TicketStatus.RESOLVED, sampleTicket.getStatus());
-        Assertions.assertNotNull(sampleTicket.getResolvedAt());
+        assertThat(response).isNotNull();
+        assertThat(sampleTicket.getStatus()).isEqualTo(TicketStatus.RESOLVED);
+        assertThat(sampleTicket.getResolvedAt()).isNotNull();
         Mockito.verify(ticketRepository, Mockito.times(1)).save(sampleTicket);
         Mockito.verify(stringRedisTemplate, Mockito.times(1)).delete("analytics:overview");
     }
