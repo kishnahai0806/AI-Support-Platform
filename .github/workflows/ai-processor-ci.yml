@@ -1,0 +1,64 @@
+name: ai-processor CI/CD
+
+on:
+  push:
+    branches: [main]
+    paths: [ai-processor/**]
+  pull_request:
+    branches: [main]
+    paths: [ai-processor/**]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: 21
+          distribution: temurin
+          cache: maven
+      - name: Run tests
+        working-directory: ai-processor
+        run: ./mvnw verify -q
+        env:
+          OPENAI_API_KEY: test-api-key
+          KAFKA_BOOTSTRAP_SERVERS: localhost:9092
+          SPRING_PROFILES_ACTIVE: local
+
+  build-and-push:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v5
+        with:
+          context: ./ai-processor
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/ai-processor:latest
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - name: Deploy to Oracle Cloud
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.ORACLE_HOST }}
+          username: ubuntu
+          key: ${{ secrets.ORACLE_SSH_KEY }}
+          script: |
+            cd /opt/ai-support-platform
+            docker compose pull ai-processor
+            docker compose up -d ai-processor
+            docker system prune -f

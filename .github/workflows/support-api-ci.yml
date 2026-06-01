@@ -1,0 +1,95 @@
+name: support-api CI/CD
+
+on:
+  push:
+    branches: [main]
+    paths: [support-api/**]
+  pull_request:
+    branches: [main]
+    paths: [support-api/**]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: support_db
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - "5432:5432"
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7.2-alpine
+        ports:
+          - "6379:6379"
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: 21
+          distribution: temurin
+          cache: maven
+      - name: Run tests
+        working-directory: support-api
+        run: ./mvnw verify -q
+        env:
+          SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/support_db
+          SPRING_DATASOURCE_USERNAME: postgres
+          SPRING_DATASOURCE_PASSWORD: postgres
+          SPRING_REDIS_HOST: localhost
+          SPRING_REDIS_PORT: 6379
+          JWT_SECRET: test-secret-key-that-is-at-least-32-bytes-long
+          JWT_ACCESS_EXPIRY_MS: 900000
+          JWT_REFRESH_EXPIRY_MS: 604800000
+          OPENAI_API_KEY: test-api-key
+          KAFKA_BOOTSTRAP_SERVERS: localhost:9092
+          SPRING_PROFILES_ACTIVE: local
+
+  build-and-push:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v5
+        with:
+          context: ./support-api
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/support-api:latest
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - name: Deploy to Oracle Cloud
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.ORACLE_HOST }}
+          username: ubuntu
+          key: ${{ secrets.ORACLE_SSH_KEY }}
+          script: |
+            cd /opt/ai-support-platform
+            docker compose pull support-api
+            docker compose up -d support-api
+            docker system prune -f
