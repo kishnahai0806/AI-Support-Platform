@@ -30,6 +30,7 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.kafka.core.KafkaTemplate;
 
@@ -53,6 +54,9 @@ class TicketServiceTest {
 
     @Mock
     private StringRedisTemplate stringRedisTemplate;
+
+    @Mock
+    private MeterRegistry meterRegistry;
 
     @InjectMocks
     private TicketService ticketService;
