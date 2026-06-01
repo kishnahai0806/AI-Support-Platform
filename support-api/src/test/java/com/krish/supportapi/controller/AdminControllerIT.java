@@ -2,18 +2,20 @@ package com.krish.supportapi.controller;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.krish.supportapi.domain.dto.request.CreateTicketRequest;
 import com.krish.supportapi.domain.dto.request.LoginRequest;
 import com.krish.supportapi.domain.dto.request.RegisterRequest;
-import java.util.Map;
+import com.krish.supportapi.domain.enums.TicketPriority;
+import com.krish.supportapi.domain.enums.UserRole;
+import com.krish.supportapi.repository.UserRepository;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
@@ -21,24 +23,30 @@ import org.springframework.http.MediaType;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-    classes = AuthControllerIT.TestApplication.class
+    classes = AdminControllerIT.TestApplication.class
 )
 @AutoConfigureMockMvc
 @Testcontainers
-class AuthControllerIT {
+class AdminControllerIT {
 
     @Container
     @SuppressWarnings("resource")
@@ -53,6 +61,9 @@ class AuthControllerIT {
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Autowired
+    private UserRepository userRepository;
+
     @MockitoBean
     private StringRedisTemplate stringRedisTemplate;
 
@@ -61,6 +72,10 @@ class AuthControllerIT {
 
     @MockitoBean
     private KafkaTemplate<String, String> kafkaTemplate;
+
+    private String accessToken;
+
+    private String adminToken;
 
     @DynamicPropertySource
     static void configureProperties(DynamicPropertyRegistry registry) {
@@ -77,119 +92,70 @@ class AuthControllerIT {
     }
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws Exception {
         when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
-    }
 
-    @Test
-    void register_validRequest_returns201() throws Exception {
-        String email = uniqueEmail();
-        RegisterRequest request = registerRequest(email, "password123");
-
-        mockMvc.perform(post("/api/v1/auth/register")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request)))
-            .andExpect(status().isCreated())
-            .andExpect(jsonPath("$.email").value(email))
-            .andExpect(jsonPath("$.accessToken").exists())
-            .andExpect(jsonPath("$.refreshToken").exists());
-    }
-
-    @Test
-    void register_duplicateEmail_returns400() throws Exception {
-        String email = uniqueEmail();
-        RegisterRequest request = registerRequest(email, "password123");
-
-        registerUser(request);
-
-        mockMvc.perform(post("/api/v1/auth/register")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request)))
-            .andExpect(status().isBadRequest())
-            .andExpect(jsonPath("$.error").value("Bad Request"));
-    }
-
-    @Test
-    void register_invalidEmail_returns400() throws Exception {
-        RegisterRequest request = registerRequest("notanemail", "password123");
-
-        mockMvc.perform(post("/api/v1/auth/register")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request)))
-            .andExpect(status().isBadRequest())
-            .andExpect(jsonPath("$.error").value("Validation Failed"));
-    }
-
-    @Test
-    void register_shortPassword_returns400() throws Exception {
-        RegisterRequest request = registerRequest(uniqueEmail(), "short");
-
-        mockMvc.perform(post("/api/v1/auth/register")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request)))
-            .andExpect(status().isBadRequest())
-            .andExpect(jsonPath("$.error").value("Validation Failed"));
-    }
-
-    @Test
-    void login_validCredentials_returns200() throws Exception {
-        String email = uniqueEmail();
+        String customerEmail = uniqueEmail();
         String password = "password123";
-        registerUser(registerRequest(email, password));
+        registerUser(registerRequest(customerEmail, password));
         Thread.sleep(1100);
+        accessToken = loginAndExtractAccessToken(loginRequest(customerEmail, password));
 
-        LoginRequest request = loginRequest(email, password);
-
-        mockMvc.perform(post("/api/v1/auth/login")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request)))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.accessToken").exists());
-    }
-
-    @Test
-    void login_wrongPassword_returns401() throws Exception {
-        String email = uniqueEmail();
-        registerUser(registerRequest(email, "password123"));
-
-        LoginRequest request = loginRequest(email, "wrongPassword");
-
-        mockMvc.perform(post("/api/v1/auth/login")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request)))
-            .andExpect(status().isUnauthorized())
-            .andExpect(jsonPath("$.error").value("Unauthorized"));
-    }
-
-    @Test
-    void login_nonExistentEmail_returns401() throws Exception {
-        LoginRequest request = loginRequest(uniqueEmail(), "password123");
-
-        mockMvc.perform(post("/api/v1/auth/login")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request)))
-            .andExpect(status().isUnauthorized());
-    }
-
-    @Test
-    void refresh_validToken_returns200() throws Exception {
-        String email = uniqueEmail();
-        String refreshToken = registerAndExtractRefreshToken(registerRequest(email, "password123"));
+        String adminEmail = uniqueEmail();
+        registerUser(registerRequest(adminEmail, password));
         Thread.sleep(1100);
-
-        mockMvc.perform(post("/api/v1/auth/refresh")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(Map.of("refreshToken", refreshToken))))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.accessToken").exists());
+        updateUserRole(adminEmail, UserRole.ADMIN);
+        adminToken = loginAndExtractAccessToken(loginRequest(adminEmail, password));
     }
 
     @Test
-    void refresh_missingToken_returns400() throws Exception {
-        mockMvc.perform(post("/api/v1/auth/refresh")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(Map.of())))
-            .andExpect(status().isBadRequest());
+    void getAnalyticsOverview_asAdmin_returns200() throws Exception {
+        performRequestWithToken(adminToken, get("/api/v1/admin/analytics/overview"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.totalTickets").exists());
+    }
+
+    @Test
+    void getAnalyticsOverview_asCustomer_returns403() throws Exception {
+        performRequestWithToken(accessToken, get("/api/v1/admin/analytics/overview"))
+            .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void getUsers_asAdmin_returns200() throws Exception {
+        performRequestWithToken(adminToken, get("/api/v1/admin/users"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.content").isArray())
+            .andExpect(jsonPath("$.totalElements").value(greaterThanOrEqualTo(1)));
+    }
+
+    @Test
+    void getUsers_asCustomer_returns403() throws Exception {
+        performRequestWithToken(accessToken, get("/api/v1/admin/users"))
+            .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void deleteTicket_asAdmin_returns204() throws Exception {
+        String ticketId = createTicketAndExtractId(accessToken);
+
+        performRequestWithToken(adminToken, delete("/api/v1/admin/tickets/{id}", ticketId))
+            .andExpect(status().isNoContent());
+    }
+
+    @Test
+    void deleteTicket_asCustomer_returns403() throws Exception {
+        String ticketId = createTicketAndExtractId(accessToken);
+
+        performRequestWithToken(accessToken, delete("/api/v1/admin/tickets/{id}", ticketId))
+            .andExpect(status().isForbidden());
+    }
+
+    private ResultActions performRequestWithToken(
+        String token,
+        MockHttpServletRequestBuilder requestBuilder
+    ) throws Exception {
+        return mockMvc.perform(requestBuilder.header("Authorization", "Bearer " + token));
     }
 
     private void registerUser(RegisterRequest request) throws Exception {
@@ -199,15 +165,41 @@ class AuthControllerIT {
             .andExpect(status().isCreated());
     }
 
-    private String registerAndExtractRefreshToken(RegisterRequest request) throws Exception {
-        MvcResult result = mockMvc.perform(post("/api/v1/auth/register")
+    private void updateUserRole(String email, UserRole role) {
+        userRepository.findByEmail(email).ifPresent(user -> {
+            user.setRole(role);
+            userRepository.save(user);
+        });
+    }
+
+    private String loginAndExtractAccessToken(LoginRequest request) throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request)))
+            .andExpect(status().isOk())
+            .andReturn();
+
+        JsonNode response = objectMapper.readTree(result.getResponse().getContentAsString());
+        return response.get("accessToken").asText();
+    }
+
+    private String createTicketAndExtractId(String token) throws Exception {
+        CreateTicketRequest request = CreateTicketRequest.builder()
+            .title("Admin test ticket")
+            .description("Integration test ticket for admin operations")
+            .priority(TicketPriority.MEDIUM)
+            .category(null)
+            .build();
+
+        MvcResult result = mockMvc.perform(post("/api/v1/tickets")
+                .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request)))
             .andExpect(status().isCreated())
             .andReturn();
 
         JsonNode response = objectMapper.readTree(result.getResponse().getContentAsString());
-        return response.get("refreshToken").asText();
+        return response.get("id").asText();
     }
 
     private RegisterRequest registerRequest(String email, String password) {

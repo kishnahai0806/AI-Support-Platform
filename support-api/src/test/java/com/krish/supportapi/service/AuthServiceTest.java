@@ -15,7 +15,6 @@ import java.util.Collections;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
-import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -30,6 +29,9 @@ import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.crypto.password.PasswordEncoder;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @ExtendWith(MockitoExtension.class)
 class AuthServiceTest {
@@ -110,10 +112,10 @@ class AuthServiceTest {
 
         AuthResponse response = authService.register(registerRequest);
 
-        Assertions.assertNotNull(response);
-        Assertions.assertEquals(sampleUser.getEmail(), response.getEmail());
-        Assertions.assertEquals(UserRole.CUSTOMER, response.getRole());
-        Assertions.assertEquals(accessToken, response.getAccessToken());
+        assertThat(response).isNotNull();
+        assertThat(response.getEmail()).isEqualTo(sampleUser.getEmail());
+        assertThat(response.getRole()).isEqualTo(UserRole.CUSTOMER);
+        assertThat(response.getAccessToken()).isEqualTo(accessToken);
         Mockito.verify(userRepository, Mockito.times(1)).save(ArgumentMatchers.any(User.class));
         Mockito.verify(refreshTokenRepository, Mockito.times(1))
             .save(ArgumentMatchers.any(RefreshToken.class));
@@ -123,7 +125,8 @@ class AuthServiceTest {
     void register_emailAlreadyExists_throwsRuntimeException() {
         Mockito.when(userRepository.existsByEmail(registerRequest.getEmail())).thenReturn(true);
 
-        Assertions.assertThrows(RuntimeException.class, () -> authService.register(registerRequest));
+        assertThatThrownBy(() -> authService.register(registerRequest))
+            .isInstanceOf(RuntimeException.class);
 
         Mockito.verify(userRepository, Mockito.never()).save(ArgumentMatchers.any(User.class));
     }
@@ -144,8 +147,8 @@ class AuthServiceTest {
 
         AuthResponse response = authService.login(loginRequest);
 
-        Assertions.assertNotNull(response);
-        Assertions.assertEquals(sampleUser.getEmail(), response.getEmail());
+        assertThat(response).isNotNull();
+        assertThat(response.getEmail()).isEqualTo(sampleUser.getEmail());
         Mockito.verify(authenticationManager, Mockito.times(1))
             .authenticate(ArgumentMatchers.any(UsernamePasswordAuthenticationToken.class));
     }
@@ -156,7 +159,8 @@ class AuthServiceTest {
             ArgumentMatchers.any(UsernamePasswordAuthenticationToken.class)
         )).thenThrow(new BadCredentialsException("Bad credentials"));
 
-        Assertions.assertThrows(BadCredentialsException.class, () -> authService.login(loginRequest));
+        assertThatThrownBy(() -> authService.login(loginRequest))
+            .isInstanceOf(BadCredentialsException.class);
 
         Mockito.verify(userRepository, Mockito.never()).findByEmail(ArgumentMatchers.anyString());
     }
@@ -191,8 +195,8 @@ class AuthServiceTest {
 
         AuthResponse response = authService.refreshToken(refreshTokenString);
 
-        Assertions.assertNotNull(response);
-        Assertions.assertEquals(accessToken, response.getAccessToken());
+        assertThat(response).isNotNull();
+        assertThat(response.getAccessToken()).isEqualTo(accessToken);
         Mockito.verify(refreshTokenRepository, Mockito.times(2))
             .save(ArgumentMatchers.any(RefreshToken.class));
     }
@@ -204,7 +208,8 @@ class AuthServiceTest {
         Mockito.when(refreshTokenRepository.findByTokenHash(refreshTokenString))
             .thenReturn(Optional.of(currentRefreshToken));
 
-        Assertions.assertThrows(RuntimeException.class, () -> authService.refreshToken(refreshTokenString));
+        assertThatThrownBy(() -> authService.refreshToken(refreshTokenString))
+            .isInstanceOf(RuntimeException.class);
 
         Mockito.verify(jwtTokenProvider, Mockito.never()).generateAccessToken(ArgumentMatchers.any(User.class));
     }
@@ -216,7 +221,8 @@ class AuthServiceTest {
         Mockito.when(refreshTokenRepository.findByTokenHash(refreshTokenString))
             .thenReturn(Optional.of(currentRefreshToken));
 
-        Assertions.assertThrows(RuntimeException.class, () -> authService.refreshToken(refreshTokenString));
+        assertThatThrownBy(() -> authService.refreshToken(refreshTokenString))
+            .isInstanceOf(RuntimeException.class);
 
         Mockito.verify(jwtTokenProvider, Mockito.never()).generateAccessToken(ArgumentMatchers.any(User.class));
     }
