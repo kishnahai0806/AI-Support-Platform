@@ -14,6 +14,8 @@ import com.krish.supportapi.domain.enums.UserRole;
 import com.krish.supportapi.event.TicketCreatedEvent;
 import com.krish.supportapi.repository.TicketRepository;
 import com.krish.supportapi.repository.UserRepository;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -21,7 +23,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentMatchers;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -30,7 +31,6 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
-import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.kafka.core.KafkaTemplate;
 
@@ -55,10 +55,8 @@ class TicketServiceTest {
     @Mock
     private StringRedisTemplate stringRedisTemplate;
 
-    @Mock
-    private MeterRegistry meterRegistry;
+    private final MeterRegistry meterRegistry = new SimpleMeterRegistry();
 
-    @InjectMocks
     private TicketService ticketService;
 
     private User sampleCustomer;
@@ -71,6 +69,15 @@ class TicketServiceTest {
 
     @BeforeEach
     void setUp() {
+        ticketService = new TicketService(
+            ticketRepository,
+            userRepository,
+            kafkaTemplate,
+            objectMapper,
+            stringRedisTemplate,
+            meterRegistry
+        );
+
         sampleCustomer = User.builder()
             .id(UUID.randomUUID())
             .email("customer@example.com")
