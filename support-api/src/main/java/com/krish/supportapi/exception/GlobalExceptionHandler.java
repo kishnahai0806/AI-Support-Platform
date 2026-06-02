@@ -3,6 +3,7 @@ package com.krish.supportapi.exception;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.LocalDateTime;
 import java.util.stream.Collectors;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -12,6 +13,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+@Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
@@ -36,7 +38,7 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiError> handleEmailAlreadyExistsException(
         EmailAlreadyExistsException exception
     ) {
-        return buildResponse(HttpStatus.CONFLICT, "Conflict", exception.getMessage());
+        return buildResponse(HttpStatus.BAD_REQUEST, "Bad Request", "Registration failed");
     }
 
     @ExceptionHandler(InvalidTokenException.class)
@@ -56,7 +58,9 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<ApiError> handleRuntimeException(RuntimeException exception) {
-        return buildResponse(HttpStatus.BAD_REQUEST, "Bad Request", exception.getMessage());
+        log.error("Unhandled runtime exception", exception);
+        return buildResponse(HttpStatus.INTERNAL_SERVER_ERROR,
+            "Internal Server Error", "An unexpected error occurred");
     }
 
     @ExceptionHandler(BadCredentialsException.class)
