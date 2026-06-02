@@ -239,10 +239,9 @@ Both services expose metrics, traces, and structured logs out of the box.
 
 ## Screenshots
 
-> Screenshots will be added after live deployment.
+### Swagger UI — API Documentation
+![Swagger UI](docs/screenshots/swagger-ui.png)
+![Swagger Schemas](docs/screenshots/swagger-schemas.png)
 
-| Feature | Screenshot |
-|---------|-----------|
-| Swagger UI | Coming soon |
-| Grafana Dashboard | Coming soon |
-| Jaeger Distributed Traces | Coming soon |
+### Grafana Dashboard — Real-time Metrics
+![Grafana Dashboard](docs/screenshots/grafana-dashboard.png)
