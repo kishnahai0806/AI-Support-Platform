@@ -1,5 +1,15 @@
 spring:
   datasource:
     url: jdbc:postgresql://localhost:5432/support_db
+    username: postgres
+    password: postgres
   kafka:
     bootstrap-servers: localhost:9092
+
+openai:
+  api-key: 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
+
+otel:
+  exporter:
+    otlp:
+      endpoint: http://localhost:4317
