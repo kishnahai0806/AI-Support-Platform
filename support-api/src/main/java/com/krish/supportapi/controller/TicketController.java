@@ -12,6 +12,7 @@ import com.krish.supportapi.domain.enums.TicketPriority;
 import com.krish.supportapi.domain.enums.TicketStatus;
 import com.krish.supportapi.service.TicketService;
 import jakarta.validation.Valid;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -33,6 +34,9 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/v1/tickets")
 public class TicketController {
+
+    private static final Set<String> ALLOWED_SORT_FIELDS =
+        Set.of("createdAt", "updatedAt", "status", "priority", "ticketNumber");
 
     private final TicketService ticketService;
 
@@ -62,6 +66,10 @@ public class TicketController {
         Authentication authentication
     ) {
         User currentUser = getCurrentUser(authentication);
+        if (!ALLOWED_SORT_FIELDS.contains(sortBy)) {
+            sortBy = "createdAt";
+        }
+        size = Math.min(size, 100);
         Pageable pageable = PageRequest.of(
             page,
             size,

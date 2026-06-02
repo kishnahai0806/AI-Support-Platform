@@ -142,7 +142,7 @@ public class OpenAiClientService {
 
             Only suggest a category different from the existing one if you are very confident.
             Existing category: %s
-            """.formatted(title, description, existingCategoryValue);
+            """.formatted(sanitizeForPrompt(title), sanitizeForPrompt(description), existingCategoryValue);
     }
 
     private String extractResponseContent(Map<String, Object> response) {
@@ -239,5 +239,11 @@ public class OpenAiClientService {
             "Classification failed",
             0, 0, 0
         );
+    }
+
+    private String sanitizeForPrompt(String input) {
+        if (input == null) return "";
+        return input.replaceAll("[<>{}\\[\\]\\\\]", "")
+            .substring(0, Math.min(input.length(), 2000));
     }
 }

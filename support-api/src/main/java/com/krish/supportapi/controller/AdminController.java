@@ -53,6 +53,7 @@ public class AdminController {
         @RequestParam(defaultValue = "20") int size,
         Authentication authentication
     ) {
+        size = Math.min(size, 100);
         Pageable pageable = PageRequest.of(
             page,
             size,
