@@ -106,44 +106,48 @@ ai-support-platform/
 git clone https://github.com/kishnahai0806/AI-Support-Platform.git
 cd AI-Support-Platform
 
-# 2. Start all infrastructure (Postgres, Redis, Kafka, Prometheus, Grafana, Jaeger)
+# 2. Create your local environment file
+cp .env.example .env
+# Edit .env and fill in your values:
+# - JWT_SECRET: any 32+ character string for local dev
+# - OPENAI_API_KEY: your OpenAI API key
+# - All other values can stay as the defaults in .env.example
+
+# 3. Create the local database (first time only)
+# Option A: if using Docker PostgreSQL
+docker compose up -d postgres redis zookeeper kafka
+docker exec -it support-postgres psql -U postgres -c "CREATE DATABASE support_db;"
+
+# Option B: if using local PostgreSQL installation
+psql -U postgres -c "CREATE DATABASE support_db;"
+
+# 4. Start all infrastructure
 docker compose up -d
 
-# 3. Run support-api (in a new terminal)
+# 5. Run support-api (in a new terminal)
 cd support-api
-./mvnw spring-boot:run        # Mac/Linux
-mvnw.cmd spring-boot:run      # Windows
+./mvnw spring-boot:run -Dspring-boot.run.profiles=local   # Mac/Linux
+mvnw.cmd spring-boot:run -Dspring-boot.run.profiles=local  # Windows
 
-# 4. Run ai-processor (in a new terminal)
+# 6. Run ai-processor (in a new terminal)
 cd ai-processor
-./mvnw spring-boot:run        # Mac/Linux
-mvnw.cmd spring-boot:run      # Windows
+./mvnw spring-boot:run -Dspring-boot.run.profiles=local   # Mac/Linux
+mvnw.cmd spring-boot:run -Dspring-boot.run.profiles=local  # Windows
 ```
 
 Once running, access the services at:
 
 | Service | URL | Credentials |
 |---------|-----|-------------|
-| Swagger UI | http://localhost:8080/swagger-ui.html | — |
+| Swagger UI | http://localhost:8080/swagger-ui/index.html | — |
 | Grafana | http://localhost:3000 | admin / admin |
 | Jaeger | http://localhost:16686 | — |
 | Prometheus | http://localhost:9090 | — |
 
-### Running Tests
-
-```bash
-# support-api — runs all tests and enforces 80% service-layer coverage
-cd support-api
-./mvnw verify        # Mac/Linux
-mvnw.cmd verify      # Windows
-
-# ai-processor
-cd ai-processor
-./mvnw verify        # Mac/Linux
-mvnw.cmd verify      # Windows
-```
-
 > **Note:** Integration tests use Testcontainers and require Docker to be running.
+> If you have a local PostgreSQL installation running on port 5432, it may conflict
+> with the Docker PostgreSQL container. Either stop the local installation or create
+> the support_db database in your local PostgreSQL.
 
 ---
 
