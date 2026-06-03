@@ -135,6 +135,24 @@ cd ai-processor
 mvnw.cmd spring-boot:run -Dspring-boot.run.profiles=local  # Windows
 ```
 
+### Windows Convenience Script
+
+A PowerShell script template is provided to start both services automatically:
+
+```powershell
+# Copy the example script
+cp run-local.example.ps1 run-local.ps1
+
+# Open run-local.ps1 and fill in your values:
+# - JWT_SECRET: any 32+ character string
+# - OPENAI_API_KEY: your real OpenAI key
+
+# Run it — opens both services in separate terminal windows
+.\run-local.ps1
+```
+
+> `run-local.ps1` is gitignored — your secrets never leave your machine.
+
 Once running, access the services at:
 
 | Service | URL | Credentials |
@@ -148,6 +166,20 @@ Once running, access the services at:
 > If you have a local PostgreSQL installation running on port 5432, it may conflict
 > with the Docker PostgreSQL container. Either stop the local installation or create
 > the support_db database in your local PostgreSQL.
+
+### Running Tests
+
+```bash
+# support-api — runs all tests and enforces 80% service-layer coverage
+cd support-api
+./mvnw verify        # Mac/Linux
+mvnw.cmd verify      # Windows
+
+# ai-processor
+cd ai-processor
+./mvnw verify        # Mac/Linux
+mvnw.cmd verify      # Windows
+```
 
 ---
 
@@ -244,8 +276,24 @@ Both services expose metrics, traces, and structured logs out of the box.
 ## Screenshots
 
 ### Swagger UI — API Documentation
+Interactive API documentation showing all endpoints across ticket, 
+message, auth, and admin controllers with JWT bearer authentication.
+
 ![Swagger UI](docs/screenshots/swagger-ui.png)
 ![Swagger Schemas](docs/screenshots/swagger-schemas.png)
 
 ### Grafana Dashboard — Real-time Metrics
+Live operational dashboard showing AI confidence score (0.950), 
+HTTP request rate by endpoint, JVM heap memory for both services, 
+active database connections, and zero 5xx errors.
+
 ![Grafana Dashboard](docs/screenshots/grafana-dashboard.png)
+
+### Jaeger — Distributed Tracing
+Full distributed tracing across both microservices via OpenTelemetry. 
+Traces show request flow through Spring Security filter chain, 
+authorization, and business logic with millisecond-level timing.
+
+![Jaeger support-api Traces](docs/screenshots/jaeger-support-api-traces.png)
+![Jaeger Trace Detail](docs/screenshots/jaeger-trace-detail.png)
+![Jaeger ai-processor Traces](docs/screenshots/jaeger-ai-processor-traces.png)
