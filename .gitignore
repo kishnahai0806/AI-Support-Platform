@@ -33,8 +33,8 @@ target/
 *.jar
 *.class
 
-LEARNING-GUIDE.md
-
 support-api/src/main/resources/application-local.yml
 
 ai-processor/src/main/resources/application-local.yml
+
+run-local.ps1
