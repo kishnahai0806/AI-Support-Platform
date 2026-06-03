@@ -14,17 +14,15 @@ import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+@Slf4j
 @Service
 @Transactional(readOnly = true)
 public class AnalyticsService {
-
-    private static final Logger log = LoggerFactory.getLogger(AnalyticsService.class);
 
     private static final String ANALYTICS_CACHE_KEY = "analytics:overview";
 
@@ -138,23 +136,24 @@ public class AnalyticsService {
 
     private Map<TicketCategory, Long> buildTicketsByCategory() {
         Map<TicketCategory, Long> ticketsByCategory = new EnumMap<>(TicketCategory.class);
-
         for (TicketCategory category : TicketCategory.values()) {
-            // TODO: Replace placeholder with repository count method for ticket category.
             ticketsByCategory.put(category, 0L);
         }
-
+        ticketRepository.countByCategory().forEach(row -> {
+            if (row[0] != null) {
+                ticketsByCategory.put((TicketCategory) row[0], (Long) row[1]);
+            }
+        });
         return ticketsByCategory;
     }
 
     private Map<TicketPriority, Long> buildTicketsByPriority() {
         Map<TicketPriority, Long> ticketsByPriority = new EnumMap<>(TicketPriority.class);
-
         for (TicketPriority priority : TicketPriority.values()) {
-            // TODO: Replace placeholder with repository count method for ticket priority.
             ticketsByPriority.put(priority, 0L);
         }
-
+        ticketRepository.countByPriority().forEach(
+            row -> ticketsByPriority.put((TicketPriority) row[0], (Long) row[1]));
         return ticketsByPriority;
     }
 }

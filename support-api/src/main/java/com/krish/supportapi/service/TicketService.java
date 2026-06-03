@@ -27,6 +27,7 @@ import io.micrometer.core.instrument.Timer.Sample;
 import java.time.LocalDateTime;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -151,7 +152,7 @@ public class TicketService {
             .orElseThrow(() -> new TicketNotFoundException("Ticket not found"));
 
         if (role == UserRole.CUSTOMER && !ticket.getCustomer().getId().equals(requesterId)) {
-            throw new RuntimeException("Access denied");
+            throw new AccessDeniedException("Access denied to this ticket");
         }
 
         return mapToDetailResponse(ticket);
@@ -188,7 +189,7 @@ public class TicketService {
             .orElseThrow(() -> new AgentNotFoundException("Agent not found"));
 
         if (agent.getRole() != UserRole.AGENT) {
-            throw new RuntimeException("User is not an agent");
+            throw new IllegalArgumentException("Assigned user is not an agent");
         }
 
         ticket.setAssignedAgent(agent);

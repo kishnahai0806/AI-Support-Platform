@@ -13,7 +13,6 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.UUID;
-import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -23,6 +22,10 @@ import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.kafka.core.KafkaTemplate;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatNoException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @ExtendWith(MockitoExtension.class)
 class AiProcessingServiceTest {
@@ -126,10 +129,10 @@ class AiProcessingServiceTest {
             ArgumentMatchers.eq(sampleEvent.getTicketId().toString()),
             ArgumentMatchers.anyString()
         );
-        Assertions.assertTrue(auditCaptor.getValue().isSuccess());
-        Assertions.assertEquals(100, auditCaptor.getValue().getPromptTokens());
-        Assertions.assertEquals(50, auditCaptor.getValue().getCompletionTokens());
-        Assertions.assertEquals(150, auditCaptor.getValue().getTotalTokens());
+        assertThat(auditCaptor.getValue().isSuccess()).isTrue();
+        assertThat(auditCaptor.getValue().getPromptTokens()).isEqualTo(100);
+        assertThat(auditCaptor.getValue().getCompletionTokens()).isEqualTo(50);
+        assertThat(auditCaptor.getValue().getTotalTokens()).isEqualTo(150);
     }
 
     @Test
@@ -151,7 +154,7 @@ class AiProcessingServiceTest {
 
         ArgumentCaptor<AiResponseAudit> auditCaptor = ArgumentCaptor.forClass(AiResponseAudit.class);
         Mockito.verify(aiResponseAuditRepository, Mockito.times(1)).save(auditCaptor.capture());
-        Assertions.assertFalse(auditCaptor.getValue().isSuccess());
+        assertThat(auditCaptor.getValue().isSuccess()).isFalse();
     }
 
     @Test
@@ -164,10 +167,8 @@ class AiProcessingServiceTest {
         Mockito.when(aiResponseAuditRepository.save(ArgumentMatchers.any(AiResponseAudit.class)))
             .thenThrow(new RuntimeException("DB connection lost"));
 
-        Assertions.assertThrows(
-            RuntimeException.class,
-            () -> aiProcessingService.processTicket(sampleEvent)
-        );
+        assertThatThrownBy(() -> aiProcessingService.processTicket(sampleEvent))
+            .isInstanceOf(RuntimeException.class);
 
         Mockito.verify(aiResponseAuditRepository, Mockito.times(1))
             .save(ArgumentMatchers.any(AiResponseAudit.class));
@@ -189,7 +190,7 @@ class AiProcessingServiceTest {
             .thenThrow(new JsonProcessingException("Serialization failed") {
             });
 
-        Assertions.assertDoesNotThrow(() -> aiProcessingService.processTicket(sampleEvent));
+        assertThatNoException().isThrownBy(() -> aiProcessingService.processTicket(sampleEvent));
 
         Mockito.verify(aiResponseAuditRepository, Mockito.times(1))
             .save(ArgumentMatchers.any(AiResponseAudit.class));
@@ -230,9 +231,9 @@ class AiProcessingServiceTest {
             ArgumentMatchers.eq(sampleEvent.getTicketId().toString()),
             payloadCaptor.capture()
         );
-        Assertions.assertTrue(eventCaptor.getValue().isAiEscalated());
-        Assertions.assertEquals(TicketCategory.BILLING, eventCaptor.getValue().getSuggestedCategory());
-        Assertions.assertEquals(120, eventCaptor.getValue().getPromptTokens());
-        Assertions.assertEquals("{}", payloadCaptor.getValue());
+        assertThat(eventCaptor.getValue().isAiEscalated()).isTrue();
+        assertThat(eventCaptor.getValue().getSuggestedCategory()).isEqualTo(TicketCategory.BILLING);
+        assertThat(eventCaptor.getValue().getPromptTokens()).isEqualTo(120);
+        assertThat(payloadCaptor.getValue()).isEqualTo("{}");
     }
 }

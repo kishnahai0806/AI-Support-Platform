@@ -29,7 +29,7 @@ public class TicketProcessedConsumer {
     }
 
     @KafkaListener(
-        topics = "ticket.processed",
+        topics = "${spring.kafka.topics.ticket-processed}",
         groupId = "support-api-group"
     )
     @Transactional
