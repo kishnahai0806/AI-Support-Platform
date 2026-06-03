@@ -56,6 +56,16 @@ public class GlobalExceptionHandler {
         return buildResponse(HttpStatus.NOT_FOUND, "Not Found", exception.getMessage());
     }
 
+    @ExceptionHandler(TicketClosedException.class)
+    public ResponseEntity<ApiError> handleTicketClosedException(TicketClosedException exception) {
+        return buildResponse(HttpStatus.UNPROCESSABLE_ENTITY, "Unprocessable Entity", exception.getMessage());
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ApiError> handleIllegalArgumentException(IllegalArgumentException exception) {
+        return buildResponse(HttpStatus.BAD_REQUEST, "Bad Request", exception.getMessage());
+    }
+
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<ApiError> handleRuntimeException(RuntimeException exception) {
         log.error("Unhandled runtime exception", exception);

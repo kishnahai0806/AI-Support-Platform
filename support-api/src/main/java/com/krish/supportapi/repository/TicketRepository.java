@@ -48,4 +48,10 @@ public interface TicketRepository extends JpaRepository<Ticket, UUID>, JpaSpecif
 
     @Query(value = "SELECT nextval('public.ticket_number_seq')", nativeQuery = true)
     long nextTicketNumber();
+
+    @Query("SELECT t.category, COUNT(t) FROM Ticket t GROUP BY t.category")
+    List<Object[]> countByCategory();
+
+    @Query("SELECT t.priority, COUNT(t) FROM Ticket t GROUP BY t.priority")
+    List<Object[]> countByPriority();
 }
