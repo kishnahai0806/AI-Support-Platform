@@ -3,6 +3,7 @@ package com.krish.aiprocessor.kafka;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.krish.aiprocessor.event.TicketCreatedEvent;
+import com.krish.aiprocessor.exception.KafkaEventDeserializationException;
 import com.krish.aiprocessor.service.AiProcessingService;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
@@ -36,7 +37,7 @@ public class TicketCreatedConsumer {
             event = objectMapper.readValue(message, TicketCreatedEvent.class);
         } catch (JsonProcessingException exception) {
             log.error("Failed to deserialize ticket.created event", exception);
-            return;
+            throw new KafkaEventDeserializationException("Failed to deserialize ticket.created event", exception);
         }
 
         try {
