@@ -243,7 +243,7 @@ public class OpenAiClientService {
 
     private String sanitizeForPrompt(String input) {
         if (input == null) return "";
-        return input.replaceAll("[<>{}\\[\\]\\\\]", "")
-            .substring(0, Math.min(input.length(), 2000));
+        String sanitized = input.replaceAll("[<>{}\\[\\]\\\\]", "");
+        return sanitized.substring(0, Math.min(sanitized.length(), 2000));
     }
 }
