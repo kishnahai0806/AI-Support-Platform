@@ -1,7 +1,9 @@
 package com.krish.supportapi.config;
 
 import com.krish.supportapi.security.JwtAuthenticationFilter;
+import com.krish.supportapi.security.RateLimitingFilter;
 import java.util.List;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -26,10 +28,14 @@ public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
 
+    private final RateLimitingFilter rateLimitingFilter;
+
     public SecurityConfig(
-        JwtAuthenticationFilter jwtAuthenticationFilter
+        JwtAuthenticationFilter jwtAuthenticationFilter,
+        RateLimitingFilter rateLimitingFilter
     ) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+        this.rateLimitingFilter = rateLimitingFilter;
     }
 
     @Bean
@@ -70,6 +76,8 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.PATCH, "/api/v1/tickets/*/priority").hasAnyRole("AGENT", "ADMIN")
                 .anyRequest().authenticated()
             )
+            .addFilterBefore(rateLimitingFilter,
+                UsernamePasswordAuthenticationFilter.class)
             .addFilterBefore(jwtAuthenticationFilter,
                 UsernamePasswordAuthenticationFilter.class)
             .build();
@@ -84,5 +92,14 @@ public class SecurityConfig {
     public AuthenticationManager authenticationManager(
             AuthenticationConfiguration config) throws Exception {
         return config.getAuthenticationManager();
+    }
+
+    @Bean
+    public FilterRegistrationBean<RateLimitingFilter> rateLimitingFilterRegistration(
+        RateLimitingFilter filter
+    ) {
+        FilterRegistrationBean<RateLimitingFilter> registration = new FilterRegistrationBean<>(filter);
+        registration.setEnabled(false);
+        return registration;
     }
 }

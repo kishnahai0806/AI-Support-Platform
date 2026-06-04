@@ -127,6 +127,7 @@ public class GlobalExceptionHandler {
         AccessDeniedException exception,
         HttpServletRequest request
     ) {
+        log.warn("Access denied for path {}: {}", request.getRequestURI(), exception.getMessage());
         return buildResponse(
             HttpStatus.FORBIDDEN,
             "Forbidden",

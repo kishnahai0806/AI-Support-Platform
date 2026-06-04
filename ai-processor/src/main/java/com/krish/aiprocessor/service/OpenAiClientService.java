@@ -204,19 +204,20 @@ public class OpenAiClientService {
             return DEFAULT_CONFIDENCE_SCORE;
         }
 
+        BigDecimal parsedConfidenceScore;
         if (confidenceScore instanceof BigDecimal bigDecimal) {
-            return bigDecimal;
+            parsedConfidenceScore = bigDecimal;
+        } else if (confidenceScore instanceof Number number) {
+            parsedConfidenceScore = BigDecimal.valueOf(number.doubleValue());
+        } else {
+            try {
+                parsedConfidenceScore = new BigDecimal(confidenceScore.toString());
+            } catch (NumberFormatException exception) {
+                return DEFAULT_CONFIDENCE_SCORE;
+            }
         }
 
-        if (confidenceScore instanceof Number number) {
-            return BigDecimal.valueOf(number.doubleValue());
-        }
-
-        try {
-            return new BigDecimal(confidenceScore.toString());
-        } catch (NumberFormatException exception) {
-            return DEFAULT_CONFIDENCE_SCORE;
-        }
+        return parsedConfidenceScore.max(BigDecimal.ZERO).min(BigDecimal.ONE);
     }
 
     private boolean parseShouldEscalate(Object shouldEscalate) {
