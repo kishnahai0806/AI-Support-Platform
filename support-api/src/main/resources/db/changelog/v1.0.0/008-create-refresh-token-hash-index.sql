@@ -1,4 +1,7 @@
 --liquibase formatted sql
 
 --changeset krish:008-create-refresh-token-hash-index
-CREATE INDEX idx_refresh_tokens_token_hash ON public.refresh_tokens(token_hash);
+-- Index on refresh_tokens(token_hash) is intentionally omitted.
+-- The UNIQUE constraint defined in 005-create-refresh-tokens.sql
+-- already creates an implicit B-tree index on this column in
+-- PostgreSQL. A separate explicit index would be redundant.

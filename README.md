@@ -190,7 +190,7 @@ mvnw.cmd verify      # Windows
 | `POST` | `/api/v1/auth/register` | None | Register new user |
 | `POST` | `/api/v1/auth/login` | None | Login and get JWT |
 | `POST` | `/api/v1/auth/refresh` | Bearer | Refresh access token |
-| `POST` | `/api/v1/tickets` | CUSTOMER | Create support ticket |
+| `POST` | `/api/v1/tickets` | Any | Create support ticket |
 | `GET` | `/api/v1/tickets` | Any | List tickets (role-filtered) |
 | `GET` | `/api/v1/tickets/{id}` | Any | Get ticket details |
 | `PATCH` | `/api/v1/tickets/{id}/status` | AGENT/ADMIN | Update ticket status |
