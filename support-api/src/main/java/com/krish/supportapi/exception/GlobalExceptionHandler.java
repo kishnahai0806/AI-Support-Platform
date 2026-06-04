@@ -1,8 +1,9 @@
 package com.krish.supportapi.exception;
 
-import jakarta.servlet.http.HttpServletRequest;
 import java.time.LocalDateTime;
 import java.util.stream.Collectors;
+
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -17,98 +18,141 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
-    private final HttpServletRequest request;
-
-    public GlobalExceptionHandler(HttpServletRequest request) {
-        this.request = request;
-    }
-
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiError> handleMethodArgumentNotValidException(
-        MethodArgumentNotValidException exception
+        MethodArgumentNotValidException exception,
+        HttpServletRequest request
     ) {
         String message = exception.getBindingResult().getFieldErrors().stream()
             .map(fieldError -> fieldError.getField() + ": " + fieldError.getDefaultMessage())
             .collect(Collectors.joining(", "));
 
-        return buildResponse(HttpStatus.BAD_REQUEST, "Validation Failed", message);
+        return buildResponse(HttpStatus.BAD_REQUEST, "Validation Failed", message, request);
     }
 
     @ExceptionHandler(EmailAlreadyExistsException.class)
     public ResponseEntity<ApiError> handleEmailAlreadyExistsException(
-        EmailAlreadyExistsException exception
+        EmailAlreadyExistsException exception,
+        HttpServletRequest request
     ) {
-        return buildResponse(HttpStatus.BAD_REQUEST, "Bad Request", "Registration failed");
+        return buildResponse(HttpStatus.BAD_REQUEST, "Bad Request", "Registration failed", request);
     }
 
     @ExceptionHandler(InvalidTokenException.class)
-    public ResponseEntity<ApiError> handleInvalidTokenException(InvalidTokenException exception) {
-        return buildResponse(HttpStatus.UNAUTHORIZED, "Unauthorized", exception.getMessage());
+    public ResponseEntity<ApiError> handleInvalidTokenException(
+        InvalidTokenException exception,
+        HttpServletRequest request
+    ) {
+        return buildResponse(HttpStatus.UNAUTHORIZED, "Unauthorized", exception.getMessage(), request);
     }
 
     @ExceptionHandler(TicketNotFoundException.class)
-    public ResponseEntity<ApiError> handleTicketNotFoundException(TicketNotFoundException exception) {
-        return buildResponse(HttpStatus.NOT_FOUND, "Not Found", exception.getMessage());
+    public ResponseEntity<ApiError> handleTicketNotFoundException(
+        TicketNotFoundException exception,
+        HttpServletRequest request
+    ) {
+        return buildResponse(HttpStatus.NOT_FOUND, "Not Found", exception.getMessage(), request);
     }
 
     @ExceptionHandler(AgentNotFoundException.class)
-    public ResponseEntity<ApiError> handleAgentNotFoundException(AgentNotFoundException exception) {
-        return buildResponse(HttpStatus.NOT_FOUND, "Not Found", exception.getMessage());
+    public ResponseEntity<ApiError> handleAgentNotFoundException(
+        AgentNotFoundException exception,
+        HttpServletRequest request
+    ) {
+        return buildResponse(HttpStatus.NOT_FOUND, "Not Found", exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(UserNotFoundException.class)
+    public ResponseEntity<ApiError> handleUserNotFoundException(
+        UserNotFoundException exception,
+        HttpServletRequest request
+    ) {
+        return buildResponse(HttpStatus.NOT_FOUND, "Not Found", exception.getMessage(), request);
     }
 
     @ExceptionHandler(TicketClosedException.class)
-    public ResponseEntity<ApiError> handleTicketClosedException(TicketClosedException exception) {
-        return buildResponse(HttpStatus.UNPROCESSABLE_ENTITY, "Unprocessable Entity", exception.getMessage());
+    public ResponseEntity<ApiError> handleTicketClosedException(
+        TicketClosedException exception,
+        HttpServletRequest request
+    ) {
+        return buildResponse(
+            HttpStatus.UNPROCESSABLE_ENTITY,
+            "Unprocessable Entity",
+            exception.getMessage(),
+            request
+        );
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<ApiError> handleIllegalArgumentException(IllegalArgumentException exception) {
-        return buildResponse(HttpStatus.BAD_REQUEST, "Bad Request", exception.getMessage());
+    public ResponseEntity<ApiError> handleIllegalArgumentException(
+        IllegalArgumentException exception,
+        HttpServletRequest request
+    ) {
+        return buildResponse(HttpStatus.BAD_REQUEST, "Bad Request", exception.getMessage(), request);
     }
 
     @ExceptionHandler(RuntimeException.class)
-    public ResponseEntity<ApiError> handleRuntimeException(RuntimeException exception) {
+    public ResponseEntity<ApiError> handleRuntimeException(
+        RuntimeException exception,
+        HttpServletRequest request
+    ) {
         log.error("Unhandled runtime exception", exception);
         return buildResponse(HttpStatus.INTERNAL_SERVER_ERROR,
-            "Internal Server Error", "An unexpected error occurred");
+            "Internal Server Error", "An unexpected error occurred", request);
     }
 
     @ExceptionHandler(BadCredentialsException.class)
     public ResponseEntity<ApiError> handleBadCredentialsException(
-        BadCredentialsException exception
+        BadCredentialsException exception,
+        HttpServletRequest request
     ) {
-        return buildResponse(HttpStatus.UNAUTHORIZED, "Unauthorized", "Invalid email or password");
+        return buildResponse(
+            HttpStatus.UNAUTHORIZED,
+            "Unauthorized",
+            "Invalid email or password",
+            request
+        );
     }
 
     @ExceptionHandler(UsernameNotFoundException.class)
     public ResponseEntity<ApiError> handleUsernameNotFoundException(
-        UsernameNotFoundException exception
+        UsernameNotFoundException exception,
+        HttpServletRequest request
     ) {
-        return buildResponse(HttpStatus.NOT_FOUND, "Not Found", exception.getMessage());
+        return buildResponse(HttpStatus.NOT_FOUND, "Not Found", exception.getMessage(), request);
     }
 
     @ExceptionHandler(AccessDeniedException.class)
-    public ResponseEntity<ApiError> handleAccessDeniedException(AccessDeniedException exception) {
+    public ResponseEntity<ApiError> handleAccessDeniedException(
+        AccessDeniedException exception,
+        HttpServletRequest request
+    ) {
         return buildResponse(
             HttpStatus.FORBIDDEN,
             "Forbidden",
-            "You do not have permission to access this resource"
+            "You do not have permission to access this resource",
+            request
         );
     }
 
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<ApiError> handleException(Exception exception) {
+    public ResponseEntity<ApiError> handleException(
+        Exception exception,
+        HttpServletRequest request
+    ) {
         return buildResponse(
             HttpStatus.INTERNAL_SERVER_ERROR,
             "Internal Server Error",
-            "An unexpected error occurred"
+            "An unexpected error occurred",
+            request
         );
     }
 
     private ResponseEntity<ApiError> buildResponse(
         HttpStatus status,
         String error,
-        String message
+        String message,
+        HttpServletRequest request
     ) {
         ApiError apiError = ApiError.builder()
             .timestamp(LocalDateTime.now())
