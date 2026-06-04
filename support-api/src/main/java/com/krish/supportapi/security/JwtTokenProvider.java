@@ -42,6 +42,7 @@ public class JwtTokenProvider {
 
         return Jwts.builder()
             .subject(user.getEmail())
+            .id(UUID.randomUUID().toString())
             .issuedAt(now)
             .expiration(expiration)
             .signWith(getSigningKey(), Jwts.SIG.HS256)

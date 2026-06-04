@@ -50,6 +50,7 @@ public class MessageController {
         Authentication authentication
     ) {
         User currentUser = getCurrentUser(authentication);
+        size = Math.min(size, 100);
         Pageable pageable = PageRequest.of(
             page,
             size,

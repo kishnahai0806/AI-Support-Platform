@@ -8,10 +8,7 @@ import com.krish.aiprocessor.domain.enums.TicketCategory;
 import com.krish.aiprocessor.event.TicketCreatedEvent;
 import com.krish.aiprocessor.event.TicketProcessedEvent;
 import com.krish.aiprocessor.repository.AiResponseAuditRepository;
-import io.micrometer.core.instrument.Counter;
-import io.micrometer.core.instrument.DistributionSummary;
 import io.micrometer.core.instrument.MeterRegistry;
-import io.micrometer.core.instrument.Tags;
 import io.micrometer.core.instrument.Timer;
 import io.micrometer.core.instrument.Timer.Sample;
 import java.math.BigDecimal;
@@ -31,6 +28,16 @@ public class AiProcessingService {
     private static final BigDecimal DEFAULT_CONFIDENCE_SCORE = new BigDecimal("0.5");
 
     private static final String DEFAULT_FAILURE_MESSAGE = "AI classification failed or returned default";
+
+    private static final String AI_PROCESSING_TOTAL_METRIC = "ai.processing.total";
+
+    private static final String AI_PROCESSING_DURATION_METRIC = "ai.processing.duration";
+
+    private static final String AI_CONFIDENCE_SCORE_METRIC = "ai.confidence.score";
+
+    private static final String SUCCESS_TAG = "success";
+
+    private static final String MODEL_TAG = "model";
 
     private final OpenAiClientService openAiClientService;
 
@@ -106,7 +113,7 @@ public class AiProcessingService {
                 event.getTicketId(), exception);
             throw exception;
         } finally {
-            sample.stop(Timer.builder("ai.processing.duration")
+            sample.stop(Timer.builder(AI_PROCESSING_DURATION_METRIC)
                 .register(meterRegistry));
         }
     }
@@ -120,17 +127,16 @@ public class AiProcessingService {
         boolean success,
         OpenAiClientService.AiClassificationResult result
     ) {
-        Counter.builder("ai.processing.total")
-            .tags(Tags.of(
-                "success", Boolean.toString(success),
-                "model", openAiProperties.getModel()
-            ))
-            .register(meterRegistry)
-            .increment();
+        meterRegistry.counter(
+            AI_PROCESSING_TOTAL_METRIC,
+            SUCCESS_TAG,
+            Boolean.toString(success),
+            MODEL_TAG,
+            openAiProperties.getModel()
+        ).increment();
 
         if (success) {
-            DistributionSummary.builder("ai.confidence.score")
-                .register(meterRegistry)
+            meterRegistry.summary(AI_CONFIDENCE_SCORE_METRIC)
                 .record(result.confidenceScore().doubleValue());
         }
     }
@@ -191,11 +197,15 @@ public class AiProcessingService {
                 ticketProcessedTopic,
                 processedEvent.getTicketId().toString(),
                 payload
-            );
+            ).join();
         } catch (JsonProcessingException exception) {
             log.error("Failed to serialize ticket.processed event {}", processedEvent.getEventId(), exception);
+            throw new KafkaPublishException(
+                "Failed to serialize ticket.processed event " + processedEvent.getEventId(), exception);
         } catch (Exception exception) {
             log.error("Failed to publish ticket.processed event {}", processedEvent.getEventId(), exception);
+            throw new KafkaPublishException(
+                "Failed to publish ticket.processed event " + processedEvent.getEventId(), exception);
         }
     }
 }

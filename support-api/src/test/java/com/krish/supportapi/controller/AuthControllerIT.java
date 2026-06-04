@@ -40,6 +40,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Testcontainers
 class AuthControllerIT {
 
+    private static final long JWT_IAT_SECOND_ROLLOVER_WAIT_MS = 1100L;
+
     @Container
     @SuppressWarnings("resource")
     static final PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine")
@@ -136,7 +138,7 @@ class AuthControllerIT {
         String email = uniqueEmail();
         String password = "password123";
         registerUser(registerRequest(email, password));
-        Thread.sleep(1100);
+        waitForNextJwtIssuedAtSecond();
 
         LoginRequest request = loginRequest(email, password);
 
@@ -175,7 +177,7 @@ class AuthControllerIT {
     void refresh_validToken_returns200() throws Exception {
         String email = uniqueEmail();
         String refreshToken = registerAndExtractRefreshToken(registerRequest(email, "password123"));
-        Thread.sleep(1100);
+        waitForNextJwtIssuedAtSecond();
 
         mockMvc.perform(post("/api/v1/auth/refresh")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -208,6 +210,11 @@ class AuthControllerIT {
 
         JsonNode response = objectMapper.readTree(result.getResponse().getContentAsString());
         return response.get("refreshToken").asText();
+    }
+
+    private void waitForNextJwtIssuedAtSecond() throws InterruptedException {
+        // JWT iat is second-granular; wait so rotated refresh tokens are distinct in this test.
+        Thread.sleep(JWT_IAT_SECOND_ROLLOVER_WAIT_MS);
     }
 
     private RegisterRequest registerRequest(String email, String password) {

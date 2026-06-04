@@ -13,6 +13,7 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -24,7 +25,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.kafka.core.KafkaTemplate;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatNoException;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @ExtendWith(MockitoExtension.class)
@@ -118,7 +118,7 @@ class AiProcessingServiceTest {
             ArgumentMatchers.eq(TICKET_PROCESSED_TOPIC),
             ArgumentMatchers.eq(sampleEvent.getTicketId().toString()),
             ArgumentMatchers.anyString()
-        )).thenReturn(null);
+        )).thenReturn(CompletableFuture.completedFuture(null));
 
         aiProcessingService.processTicket(sampleEvent);
 
@@ -148,7 +148,7 @@ class AiProcessingServiceTest {
             ArgumentMatchers.eq(TICKET_PROCESSED_TOPIC),
             ArgumentMatchers.eq(sampleEvent.getTicketId().toString()),
             ArgumentMatchers.anyString()
-        )).thenReturn(null);
+        )).thenReturn(CompletableFuture.completedFuture(null));
 
         aiProcessingService.processTicket(sampleEvent);
 
@@ -165,7 +165,7 @@ class AiProcessingServiceTest {
             sampleEvent.getCategory()
         )).thenReturn(successResult);
         Mockito.when(aiResponseAuditRepository.save(ArgumentMatchers.any(AiResponseAudit.class)))
-            .thenThrow(new RuntimeException("DB connection lost"));
+            .thenThrow(new IllegalStateException("DB connection lost"));
 
         assertThatThrownBy(() -> aiProcessingService.processTicket(sampleEvent))
             .isInstanceOf(RuntimeException.class);
@@ -180,7 +180,7 @@ class AiProcessingServiceTest {
     }
 
     @Test
-    void processTicket_kafkaPublishFails_auditStillSaved() throws Exception {
+    void processTicket_kafkaPublishFails_auditStillSavedAndRethrows() throws Exception {
         Mockito.when(openAiClientService.classifyTicket(
             sampleEvent.getTitle(),
             sampleEvent.getDescription(),
@@ -190,7 +190,8 @@ class AiProcessingServiceTest {
             .thenThrow(new JsonProcessingException("Serialization failed") {
             });
 
-        assertThatNoException().isThrownBy(() -> aiProcessingService.processTicket(sampleEvent));
+        assertThatThrownBy(() -> aiProcessingService.processTicket(sampleEvent))
+            .isInstanceOf(KafkaPublishException.class);
 
         Mockito.verify(aiResponseAuditRepository, Mockito.times(1))
             .save(ArgumentMatchers.any(AiResponseAudit.class));
@@ -218,7 +219,7 @@ class AiProcessingServiceTest {
             ArgumentMatchers.eq(TICKET_PROCESSED_TOPIC),
             ArgumentMatchers.eq(sampleEvent.getTicketId().toString()),
             ArgumentMatchers.anyString()
-        )).thenReturn(null);
+        )).thenReturn(CompletableFuture.completedFuture(null));
 
         aiProcessingService.processTicket(sampleEvent);
 

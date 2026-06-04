@@ -1,19 +1,20 @@
 package com.krish.supportapi.controller;
 
-import com.krish.supportapi.domain.dto.request.LoginRequest;
-import com.krish.supportapi.domain.dto.request.RegisterRequest;
-import com.krish.supportapi.domain.dto.response.AuthResponse;
-import com.krish.supportapi.security.SecurityConstants;
-import com.krish.supportapi.service.AuthService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
-import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import com.krish.supportapi.domain.dto.request.LoginRequest;
+import com.krish.supportapi.domain.dto.request.LogoutRequest;
+import com.krish.supportapi.domain.dto.request.RefreshTokenRequest;
+import com.krish.supportapi.domain.dto.request.RegisterRequest;
+import com.krish.supportapi.domain.dto.response.AuthResponse;
+import com.krish.supportapi.security.SecurityConstants;
+import com.krish.supportapi.service.AuthService;
 
 @RestController
 @RequestMapping("/api/v1/auth")
@@ -38,23 +39,16 @@ public class AuthController {
     }
 
     @PostMapping("/refresh")
-    public ResponseEntity<AuthResponse> refresh(@RequestBody Map<String, String> body) {
-        String refreshToken = body.get("refreshToken");
-
-        if (refreshToken == null || refreshToken.isBlank()) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
-        }
-
-        AuthResponse response = authService.refreshToken(refreshToken);
+    public ResponseEntity<AuthResponse> refresh(@Valid @RequestBody RefreshTokenRequest request) {
+        AuthResponse response = authService.refreshToken(request.getRefreshToken());
         return ResponseEntity.ok(response);
     }
 
     @PostMapping("/logout")
     public ResponseEntity<Void> logout(
         HttpServletRequest request,
-        @RequestBody Map<String, String> body
+        @Valid @RequestBody LogoutRequest body
     ) {
-        String refreshToken = body.get("refreshToken");
         String authorizationHeader = request.getHeader(SecurityConstants.AUTHORIZATION_HEADER);
         String accessToken = null;
 
@@ -62,7 +56,7 @@ public class AuthController {
             accessToken = authorizationHeader.substring(SecurityConstants.BEARER_PREFIX.length());
         }
 
-        authService.logout(refreshToken, accessToken);
+        authService.logout(body.getRefreshToken(), accessToken);
         return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
     }
 }

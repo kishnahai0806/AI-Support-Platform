@@ -1,0 +1,23 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - "alerts.yml"
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager:9093
+
+scrape_configs:
+  - job_name: 'support-api'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['support-api:8080']
+
+  - job_name: 'ai-processor'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['ai-processor:8081']
