@@ -58,6 +58,11 @@ public class SecurityConfig {
                     response.sendError(
                         HttpStatus.UNAUTHORIZED.value(),
                         HttpStatus.UNAUTHORIZED.getReasonPhrase()
+                    ))
+                .accessDeniedHandler((request, response, accessDeniedException) ->
+                    response.sendError(
+                        HttpStatus.FORBIDDEN.value(),
+                        HttpStatus.FORBIDDEN.getReasonPhrase()
                     )))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(HttpMethod.POST, "/api/v1/auth/register").permitAll()
@@ -70,6 +75,7 @@ public class SecurityConfig {
                 .requestMatchers("/swagger-ui.html").permitAll()
                 .requestMatchers("/v3/api-docs/**").permitAll()
                 .requestMatchers("/v3/api-docs").permitAll()
+                .requestMatchers("/error").permitAll()
                 .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                 .requestMatchers(HttpMethod.PATCH, "/api/v1/tickets/*/status").hasAnyRole("AGENT", "ADMIN")
                 .requestMatchers(HttpMethod.PATCH, "/api/v1/tickets/*/assign").hasAnyRole("AGENT", "ADMIN")
@@ -99,6 +105,15 @@ public class SecurityConfig {
         RateLimitingFilter filter
     ) {
         FilterRegistrationBean<RateLimitingFilter> registration = new FilterRegistrationBean<>(filter);
+        registration.setEnabled(false);
+        return registration;
+    }
+    
+    @Bean
+    public FilterRegistrationBean<JwtAuthenticationFilter> jwtAuthenticationFilterRegistration(
+        JwtAuthenticationFilter filter
+    ) {
+        FilterRegistrationBean<JwtAuthenticationFilter> registration = new FilterRegistrationBean<>(filter);
         registration.setEnabled(false);
         return registration;
     }
