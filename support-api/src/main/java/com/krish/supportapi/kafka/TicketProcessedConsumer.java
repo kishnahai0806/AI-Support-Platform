@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.krish.supportapi.domain.entity.Ticket;
 import com.krish.supportapi.domain.enums.TicketStatus;
 import com.krish.supportapi.event.TicketProcessedEvent;
+import com.krish.supportapi.exception.KafkaEventDeserializationException;
+import com.krish.supportapi.exception.KafkaEventProcessingException;
 import com.krish.supportapi.repository.TicketRepository;
 import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
@@ -29,8 +31,8 @@ public class TicketProcessedConsumer {
     }
 
     @KafkaListener(
-        topics = "ticket.processed",
-        groupId = "support-api-group"
+        topics = "${spring.kafka.topics.ticket-processed}",
+        groupId = "${spring.kafka.consumer.group-id}"
     )
     @Transactional
     public void consume(String message) {
@@ -40,7 +42,7 @@ public class TicketProcessedConsumer {
             event = objectMapper.readValue(message, TicketProcessedEvent.class);
         } catch (JsonProcessingException exception) {
             log.error("Failed to deserialize ticket processed event. Raw message: {}", message, exception);
-            return;
+            throw new KafkaEventDeserializationException("Failed to deserialize ticket processed event", exception);
         }
 
         try {
@@ -79,7 +81,7 @@ public class TicketProcessedConsumer {
             log.info("Ticket {} processed successfully by AI", ticket.getId());
         } catch (Exception exception) {
             log.error("Failed to process ticket processed event {}", event.getEventId(), exception);
-            throw new RuntimeException(
+            throw new KafkaEventProcessingException(
                 "Consumer failed processing ticket event " + event.getEventId(), exception);
         }
     }

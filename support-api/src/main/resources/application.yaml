@@ -67,7 +67,7 @@ otel:
 logging:
   level:
     root: INFO
-    com.krish.supportapi: DEBUG
+    com.krish.supportapi: INFO
   pattern:
     console: '{"ts":"%d{yyyy-MM-dd HH:mm:ss.SSS}","lvl":"%p","svc":"support-api","trace":"%X{traceId:-}","span":"%X{spanId:-}","reqId":"%X{requestId:-}","method":"%X{method:-}","path":"%X{path:-}","log":"%logger{36}","msg":"%replace(%message){''\"'',''\\\"''}"}%n'
 
@@ -75,8 +75,3 @@ jwt:
   secret: ${JWT_SECRET}
   access-token-expiry-ms: ${JWT_ACCESS_EXPIRY_MS}
   refresh-token-expiry-ms: ${JWT_REFRESH_EXPIRY_MS}
-
-openai:
-  api-key: ${OPENAI_API_KEY}
-  model: gpt-4o-mini
-  base-url: https://api.openai.com/v1

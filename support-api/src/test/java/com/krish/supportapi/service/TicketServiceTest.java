@@ -2,6 +2,7 @@ package com.krish.supportapi.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.krish.supportapi.config.CacheConstants;
 import com.krish.supportapi.domain.dto.request.CreateTicketRequest;
 import com.krish.supportapi.domain.dto.request.UpdateTicketStatusRequest;
 import com.krish.supportapi.domain.dto.response.TicketDetailResponse;
@@ -19,6 +20,7 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -75,7 +77,8 @@ class TicketServiceTest {
             kafkaTemplate,
             objectMapper,
             stringRedisTemplate,
-            meterRegistry
+            meterRegistry,
+            "ticket.created"
         );
 
         sampleCustomer = User.builder()
@@ -102,6 +105,7 @@ class TicketServiceTest {
             .status(TicketStatus.OPEN)
             .priority(TicketPriority.MEDIUM)
             .customer(sampleCustomer)
+            .assignedAgent(sampleAgent)
             .build();
 
         createRequest = CreateTicketRequest.builder()
@@ -123,7 +127,7 @@ class TicketServiceTest {
             ArgumentMatchers.anyString(),
             ArgumentMatchers.anyString(),
             ArgumentMatchers.anyString()
-        )).thenReturn(null);
+        )).thenReturn(CompletableFuture.completedFuture(null));
 
         TicketResponse response = ticketService.createTicket(createRequest, sampleCustomer.getId());
 
@@ -220,13 +224,18 @@ class TicketServiceTest {
         Mockito.when(ticketRepository.findById(sampleTicket.getId())).thenReturn(Optional.of(sampleTicket));
         Mockito.when(ticketRepository.save(sampleTicket)).thenReturn(sampleTicket);
 
-        TicketResponse response = ticketService.updateStatus(sampleTicket.getId(), request, sampleAgent.getId());
+        TicketResponse response = ticketService.updateStatus(
+            sampleTicket.getId(),
+            request,
+            sampleAgent.getId(),
+            UserRole.AGENT
+        );
 
         assertThat(response).isNotNull();
         assertThat(sampleTicket.getStatus()).isEqualTo(TicketStatus.RESOLVED);
         assertThat(sampleTicket.getResolvedAt()).isNotNull();
         Mockito.verify(ticketRepository, Mockito.times(1)).save(sampleTicket);
-        Mockito.verify(stringRedisTemplate, Mockito.times(1)).delete("analytics:overview");
+        Mockito.verify(stringRedisTemplate, Mockito.times(1)).delete(CacheConstants.ANALYTICS_OVERVIEW_KEY);
     }
 
     @Test
@@ -236,6 +245,6 @@ class TicketServiceTest {
         ticketService.deleteTicket(sampleTicket.getId());
 
         Mockito.verify(ticketRepository, Mockito.times(1)).delete(sampleTicket);
-        Mockito.verify(stringRedisTemplate, Mockito.times(1)).delete("analytics:overview");
+        Mockito.verify(stringRedisTemplate, Mockito.times(1)).delete(CacheConstants.ANALYTICS_OVERVIEW_KEY);
     }
 }

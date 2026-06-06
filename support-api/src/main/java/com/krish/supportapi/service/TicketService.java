@@ -2,6 +2,7 @@ package com.krish.supportapi.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.krish.supportapi.config.CacheConstants;
 import com.krish.supportapi.domain.dto.request.AssignTicketRequest;
 import com.krish.supportapi.domain.dto.request.CreateTicketRequest;
 import com.krish.supportapi.domain.dto.request.UpdateTicketStatusRequest;
@@ -15,18 +16,22 @@ import com.krish.supportapi.domain.enums.TicketStatus;
 import com.krish.supportapi.domain.enums.UserRole;
 import com.krish.supportapi.event.TicketCreatedEvent;
 import com.krish.supportapi.exception.AgentNotFoundException;
+import com.krish.supportapi.exception.KafkaEventProcessingException;
+import com.krish.supportapi.exception.TicketClosedException;
 import com.krish.supportapi.exception.TicketNotFoundException;
+import com.krish.supportapi.exception.UserNotFoundException;
 import com.krish.supportapi.repository.TicketRepository;
 import com.krish.supportapi.repository.TicketSpecification;
 import com.krish.supportapi.repository.UserRepository;
-import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
-import io.micrometer.core.instrument.Tags;
 import io.micrometer.core.instrument.Timer;
 import io.micrometer.core.instrument.Timer.Sample;
 import java.time.LocalDateTime;
 import java.util.UUID;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -36,11 +41,18 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @Transactional
+@Slf4j
 public class TicketService {
 
-    private static final String TICKET_CREATED_TOPIC = "ticket.created";
+    private static final String TICKETS_CREATED_TOTAL_METRIC = "tickets.created.total";
 
-    private static final String ANALYTICS_CACHE_KEY = "analytics:overview";
+    private static final String TICKET_CREATION_DURATION_METRIC = "ticket.creation.duration";
+
+    private static final String PRIORITY_TAG = "priority";
+
+    private static final String CATEGORY_TAG = "category";
+
+    private static final String UNSET_CATEGORY_TAG_VALUE = "NONE";
 
     private final TicketRepository ticketRepository;
 
@@ -54,13 +66,16 @@ public class TicketService {
 
     private final MeterRegistry meterRegistry;
 
+    private final String ticketCreatedTopic;
+
     public TicketService(
         TicketRepository ticketRepository,
         UserRepository userRepository,
         KafkaTemplate<String, String> kafkaTemplate,
         ObjectMapper objectMapper,
         StringRedisTemplate stringRedisTemplate,
-        MeterRegistry meterRegistry
+        MeterRegistry meterRegistry,
+        @Value("${spring.kafka.topics.ticket-created}") String ticketCreatedTopic
     ) {
         this.ticketRepository = ticketRepository;
         this.userRepository = userRepository;
@@ -68,6 +83,7 @@ public class TicketService {
         this.objectMapper = objectMapper;
         this.stringRedisTemplate = stringRedisTemplate;
         this.meterRegistry = meterRegistry;
+        this.ticketCreatedTopic = ticketCreatedTopic;
     }
 
     public TicketResponse createTicket(CreateTicketRequest request, UUID customerId) {
@@ -75,7 +91,7 @@ public class TicketService {
 
         try {
             User customer = userRepository.findById(customerId)
-                .orElseThrow(() -> new TicketNotFoundException("Customer not found"));
+                .orElseThrow(() -> new UserNotFoundException("Customer not found"));
 
             String ticketNumber = "TKT-" + String.format("%06d", ticketRepository.nextTicketNumber());
             TicketPriority priority = request.getPriority() != null
@@ -88,7 +104,7 @@ public class TicketService {
                 .description(request.getDescription())
                 .priority(priority)
                 .category(request.getCategory())
-                .status(TicketStatus.OPEN)
+                .status(TicketStatus.AI_PROCESSING)
                 .customer(customer)
                 .build();
 
@@ -111,24 +127,31 @@ public class TicketService {
             try {
                 serializedEvent = objectMapper.writeValueAsString(event);
             } catch (JsonProcessingException exception) {
-                throw new RuntimeException("Failed to serialize ticket created event", exception);
+                throw new KafkaEventProcessingException("Failed to serialize ticket created event", exception);
             }
 
-            kafkaTemplate.send(TICKET_CREATED_TOPIC, savedTicket.getId().toString(), serializedEvent);
-            Counter.builder("tickets.created.total")
-                .tags(Tags.of(
-                    "priority", savedTicket.getPriority().name(),
-                    "category", savedTicket.getCategory() != null
-                        ? savedTicket.getCategory().name()
-                        : "NONE"
-                ))
-                .register(meterRegistry)
-                .increment();
-            stringRedisTemplate.delete(ANALYTICS_CACHE_KEY);
+            kafkaTemplate.send(ticketCreatedTopic, savedTicket.getId().toString(), serializedEvent)
+                .whenComplete((sendResult, exception) -> {
+                    if (exception != null) {
+                        log.error("Failed to publish ticket.created event {}", event.getEventId(), exception);
+                    } else {
+                        log.debug("Published ticket.created event {} to {}", event.getEventId(), ticketCreatedTopic);
+                    }
+                });
+            meterRegistry.counter(
+                TICKETS_CREATED_TOTAL_METRIC,
+                PRIORITY_TAG,
+                savedTicket.getPriority().name(),
+                CATEGORY_TAG,
+                savedTicket.getCategory() != null
+                    ? savedTicket.getCategory().name()
+                    : UNSET_CATEGORY_TAG_VALUE
+            ).increment();
+            stringRedisTemplate.delete(CacheConstants.ANALYTICS_OVERVIEW_KEY);
 
             return mapToResponse(savedTicket);
         } finally {
-            sample.stop(Timer.builder("ticket.creation.duration")
+            sample.stop(Timer.builder(TICKET_CREATION_DURATION_METRIC)
                 .register(meterRegistry));
         }
     }
@@ -151,7 +174,7 @@ public class TicketService {
             .orElseThrow(() -> new TicketNotFoundException("Ticket not found"));
 
         if (role == UserRole.CUSTOMER && !ticket.getCustomer().getId().equals(requesterId)) {
-            throw new RuntimeException("Access denied");
+            throw new AccessDeniedException("Access denied to this ticket");
         }
 
         return mapToDetailResponse(ticket);
@@ -160,10 +183,13 @@ public class TicketService {
     public TicketResponse updateStatus(
         UUID ticketId,
         UpdateTicketStatusRequest request,
-        UUID agentId
+        UUID requesterId,
+        UserRole requesterRole
     ) {
         Ticket ticket = ticketRepository.findById(ticketId)
             .orElseThrow(() -> new TicketNotFoundException("Ticket not found"));
+
+        enforceAssignedAgentMutationAllowed(ticket, requesterId, requesterRole);
 
         ticket.setStatus(request.getStatus());
 
@@ -176,20 +202,27 @@ public class TicketService {
         }
 
         Ticket savedTicket = ticketRepository.save(ticket);
-        stringRedisTemplate.delete(ANALYTICS_CACHE_KEY);
+        stringRedisTemplate.delete(CacheConstants.ANALYTICS_OVERVIEW_KEY);
 
         return mapToResponse(savedTicket);
     }
 
-    public TicketResponse assignTicket(UUID ticketId, AssignTicketRequest request) {
+    public TicketResponse assignTicket(
+        UUID ticketId,
+        AssignTicketRequest request,
+        UUID requesterId,
+        UserRole requesterRole
+    ) {
         Ticket ticket = ticketRepository.findById(ticketId)
             .orElseThrow(() -> new TicketNotFoundException("Ticket not found"));
         User agent = userRepository.findById(request.getAgentId())
             .orElseThrow(() -> new AgentNotFoundException("Agent not found"));
 
         if (agent.getRole() != UserRole.AGENT) {
-            throw new RuntimeException("User is not an agent");
+            throw new IllegalArgumentException("Assigned user is not an agent");
         }
+
+        enforceAssignmentAllowed(ticket, request.getAgentId(), requesterId, requesterRole);
 
         ticket.setAssignedAgent(agent);
 
@@ -198,19 +231,26 @@ public class TicketService {
         }
 
         Ticket savedTicket = ticketRepository.save(ticket);
-        stringRedisTemplate.delete(ANALYTICS_CACHE_KEY);
+        stringRedisTemplate.delete(CacheConstants.ANALYTICS_OVERVIEW_KEY);
 
         return mapToResponse(savedTicket);
     }
 
-    public TicketResponse updatePriority(UUID ticketId, TicketPriority priority) {
+    public TicketResponse updatePriority(
+        UUID ticketId,
+        TicketPriority priority,
+        UUID requesterId,
+        UserRole requesterRole
+    ) {
         Ticket ticket = ticketRepository.findById(ticketId)
             .orElseThrow(() -> new TicketNotFoundException("Ticket not found"));
+
+        enforceAssignedAgentMutationAllowed(ticket, requesterId, requesterRole);
 
         ticket.setPriority(priority);
 
         Ticket savedTicket = ticketRepository.save(ticket);
-        stringRedisTemplate.delete(ANALYTICS_CACHE_KEY);
+        stringRedisTemplate.delete(CacheConstants.ANALYTICS_OVERVIEW_KEY);
 
         return mapToResponse(savedTicket);
     }
@@ -220,7 +260,52 @@ public class TicketService {
             .orElseThrow(() -> new TicketNotFoundException("Ticket not found"));
 
         ticketRepository.delete(ticket);
-        stringRedisTemplate.delete(ANALYTICS_CACHE_KEY);
+        stringRedisTemplate.delete(CacheConstants.ANALYTICS_OVERVIEW_KEY);
+    }
+
+    private void enforceAssignedAgentMutationAllowed(
+        Ticket ticket,
+        UUID requesterId,
+        UserRole requesterRole
+    ) {
+        enforceTicketIsNotClosed(ticket);
+
+        if (requesterRole == UserRole.ADMIN) {
+            return;
+        }
+
+        if (requesterRole != UserRole.AGENT || ticket.getAssignedAgent() == null
+                || !ticket.getAssignedAgent().getId().equals(requesterId)) {
+            throw new AccessDeniedException("Access denied to this ticket");
+        }
+    }
+
+    private void enforceAssignmentAllowed(
+        Ticket ticket,
+        UUID targetAgentId,
+        UUID requesterId,
+        UserRole requesterRole
+    ) {
+        enforceTicketIsNotClosed(ticket);
+
+        if (requesterRole == UserRole.ADMIN) {
+            return;
+        }
+
+        if (requesterRole != UserRole.AGENT || !targetAgentId.equals(requesterId)) {
+            throw new AccessDeniedException("Access denied to this ticket");
+        }
+
+        if (ticket.getAssignedAgent() != null
+                && !ticket.getAssignedAgent().getId().equals(requesterId)) {
+            throw new AccessDeniedException("Access denied to this ticket");
+        }
+    }
+
+    private void enforceTicketIsNotClosed(Ticket ticket) {
+        if (ticket.getStatus() == TicketStatus.CLOSED) {
+            throw new TicketClosedException("Cannot modify a closed ticket");
+        }
     }
 
     private TicketResponse mapToResponse(Ticket ticket) {

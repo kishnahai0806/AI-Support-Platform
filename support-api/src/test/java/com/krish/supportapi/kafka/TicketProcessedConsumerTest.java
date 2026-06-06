@@ -6,12 +6,12 @@ import com.krish.supportapi.domain.entity.Ticket;
 import com.krish.supportapi.domain.enums.TicketCategory;
 import com.krish.supportapi.domain.enums.TicketStatus;
 import com.krish.supportapi.event.TicketProcessedEvent;
+import com.krish.supportapi.exception.KafkaEventDeserializationException;
 import com.krish.supportapi.repository.TicketRepository;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.UUID;
-import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -20,6 +20,9 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @ExtendWith(MockitoExtension.class)
 class TicketProcessedConsumerTest {
@@ -75,9 +78,9 @@ class TicketProcessedConsumerTest {
         consumer.consume("{}");
 
         Mockito.verify(ticketRepository, Mockito.times(1)).save(sampleTicket);
-        Assertions.assertNotNull(sampleTicket.getAiProcessedAt());
-        Assertions.assertEquals(TicketStatus.IN_PROGRESS, sampleTicket.getStatus());
-        Assertions.assertEquals(new BigDecimal("0.9500"), sampleTicket.getAiConfidenceScore());
+        assertThat(sampleTicket.getAiProcessedAt()).isNotNull();
+        assertThat(sampleTicket.getStatus()).isEqualTo(TicketStatus.IN_PROGRESS);
+        assertThat(sampleTicket.getAiConfidenceScore()).isEqualByComparingTo(new BigDecimal("0.9500"));
     }
 
     @Test
@@ -107,7 +110,7 @@ class TicketProcessedConsumerTest {
 
         consumer.consume("{}");
 
-        Assertions.assertEquals(TicketStatus.ESCALATED, sampleTicket.getStatus());
+        assertThat(sampleTicket.getStatus()).isEqualTo(TicketStatus.ESCALATED);
         Mockito.verify(ticketRepository, Mockito.times(1)).save(sampleTicket);
     }
 
@@ -146,14 +149,15 @@ class TicketProcessedConsumerTest {
     }
 
     @Test
-    void consume_deserializationFailure_skipsProcessing() throws Exception {
+    void consume_deserializationFailure_throwsForErrorHandler() throws Exception {
         Mockito.when(objectMapper.readValue(
             ArgumentMatchers.anyString(),
             ArgumentMatchers.eq(TicketProcessedEvent.class)
         )).thenThrow(new JsonProcessingException("Invalid JSON") {
         });
 
-        consumer.consume("invalid json");
+        assertThatThrownBy(() -> consumer.consume("invalid json"))
+            .isInstanceOf(KafkaEventDeserializationException.class);
 
         Mockito.verify(ticketRepository, Mockito.never()).findById(ArgumentMatchers.any(UUID.class));
         Mockito.verify(ticketRepository, Mockito.never()).save(ArgumentMatchers.any(Ticket.class));
@@ -170,7 +174,7 @@ class TicketProcessedConsumerTest {
 
         consumer.consume("{}");
 
-        Assertions.assertEquals(TicketCategory.TECHNICAL, sampleTicket.getCategory());
+        assertThat(sampleTicket.getCategory()).isEqualTo(TicketCategory.TECHNICAL);
     }
 
     @Test
@@ -200,7 +204,7 @@ class TicketProcessedConsumerTest {
 
         consumer.consume("{}");
 
-        Assertions.assertEquals(TicketStatus.OPEN, sampleTicket.getStatus());
+        assertThat(sampleTicket.getStatus()).isEqualTo(TicketStatus.OPEN);
         Mockito.verify(ticketRepository, Mockito.times(1)).save(sampleTicket);
     }
 
@@ -223,7 +227,7 @@ class TicketProcessedConsumerTest {
 
         consumer.consume("{}");
 
-        Assertions.assertEquals(TicketCategory.BILLING, ticketWithCategory.getCategory());
+        assertThat(ticketWithCategory.getCategory()).isEqualTo(TicketCategory.BILLING);
         Mockito.verify(ticketRepository, Mockito.times(1)).save(ticketWithCategory);
     }
 }

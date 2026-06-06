@@ -1,5 +1,12 @@
 package com.krish.supportapi.kafka;
 
+import java.time.Duration;
+import java.util.Map;
+
+import org.apache.kafka.clients.consumer.Consumer;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.common.serialization.StringDeserializer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.krish.supportapi.domain.entity.Ticket;
 import com.krish.supportapi.domain.entity.User;
@@ -22,8 +29,11 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
+import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.test.EmbeddedKafkaBroker;
 import org.springframework.kafka.test.context.EmbeddedKafka;
+import org.springframework.kafka.test.utils.KafkaTestUtils;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -41,7 +51,7 @@ import static org.mockito.Mockito.when;
 )
 @EmbeddedKafka(
     partitions = 1,
-    topics = {"ticket.processed"},
+    topics = {"ticket.processed", "ticket.processed-dlt"},
     brokerProperties = {
         "listeners=PLAINTEXT://localhost:9093",
         "port=9093"
@@ -49,6 +59,14 @@ import static org.mockito.Mockito.when;
 )
 @Testcontainers
 class TicketProcessedConsumerIT {
+
+    private static final String TICKET_PROCESSED_TOPIC = "ticket.processed";
+
+    private static final String TICKET_PROCESSED_DLT_TOPIC = "ticket.processed-dlt";
+
+    private static final String MALFORMED_EVENT_PAYLOAD = "not-json";
+
+    private static final int DLT_POLL_TIMEOUT_SECONDS = 10;
 
     @Container
     @SuppressWarnings("resource")
@@ -68,6 +86,9 @@ class TicketProcessedConsumerIT {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private EmbeddedKafkaBroker embeddedKafkaBroker;
 
     @MockitoBean
     private StringRedisTemplate stringRedisTemplate;
@@ -134,7 +155,7 @@ class TicketProcessedConsumerIT {
             .build();
 
         String json = objectMapper.writeValueAsString(event);
-        kafkaTemplate.send("ticket.processed", ticketId.toString(), json).get();
+        kafkaTemplate.send(TICKET_PROCESSED_TOPIC, ticketId.toString(), json).get();
 
         await().atMost(5, TimeUnit.SECONDS).untilAsserted(() -> {
             Ticket updated = ticketRepository.findById(ticketId).orElseThrow();
@@ -164,7 +185,7 @@ class TicketProcessedConsumerIT {
             .build();
 
         String json = objectMapper.writeValueAsString(event);
-        kafkaTemplate.send("ticket.processed", ticketId.toString(), json).get();
+        kafkaTemplate.send(TICKET_PROCESSED_TOPIC, ticketId.toString(), json).get();
 
         await().atMost(5, TimeUnit.SECONDS).untilAsserted(() -> {
             Ticket updated = ticketRepository.findById(ticketId).orElseThrow();
@@ -196,7 +217,7 @@ class TicketProcessedConsumerIT {
             .build();
 
         String json = objectMapper.writeValueAsString(event);
-        kafkaTemplate.send("ticket.processed", ticketId.toString(), json).get();
+        kafkaTemplate.send(TICKET_PROCESSED_TOPIC, ticketId.toString(), json).get();
 
         await()
             .pollDelay(3, TimeUnit.SECONDS)
@@ -226,13 +247,41 @@ class TicketProcessedConsumerIT {
             .build();
 
         String json = objectMapper.writeValueAsString(event);
-        kafkaTemplate.send("ticket.processed", ticketId.toString(), json).get();
+        kafkaTemplate.send(TICKET_PROCESSED_TOPIC, ticketId.toString(), json).get();
 
         await().atMost(5, TimeUnit.SECONDS).untilAsserted(() -> {
             Ticket updated = ticketRepository.findById(ticketId).orElseThrow();
             assertThat(updated.getStatus()).isEqualTo(TicketStatus.OPEN);
             assertThat(updated.getAiProcessedAt()).isNotNull();
         });
+    }
+
+    @Test
+    void malformedProcessedEvent_routesToDlt() throws Exception {
+        Map<String, Object> consumerProps = KafkaTestUtils.consumerProps(
+            "ticket-processed-dlt-test-" + UUID.randomUUID(),
+            "false",
+            embeddedKafkaBroker
+        );
+        consumerProps.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+
+        try (Consumer<String, String> dltConsumer =
+                new DefaultKafkaConsumerFactory<>(
+                    consumerProps,
+                    new StringDeserializer(),
+                    new StringDeserializer()
+                ).createConsumer()) {
+            embeddedKafkaBroker.consumeFromAnEmbeddedTopic(dltConsumer, TICKET_PROCESSED_DLT_TOPIC);
+
+            kafkaTemplate.send(TICKET_PROCESSED_TOPIC, "malformed", MALFORMED_EVENT_PAYLOAD).get();
+
+            ConsumerRecord<String, String> dltRecord = KafkaTestUtils.getSingleRecord(
+                dltConsumer,
+                TICKET_PROCESSED_DLT_TOPIC,
+                Duration.ofSeconds(DLT_POLL_TIMEOUT_SECONDS)
+            );
+            assertThat(dltRecord.value()).isEqualTo(MALFORMED_EVENT_PAYLOAD);
+        }
     }
 
     @SpringBootApplication(scanBasePackages = "com.krish.supportapi")

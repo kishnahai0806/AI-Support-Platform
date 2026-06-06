@@ -43,9 +43,18 @@ public interface TicketRepository extends JpaRepository<Ticket, UUID>, JpaSpecif
     @Query("SELECT t.createdAt, t.resolvedAt FROM Ticket t WHERE t.resolvedAt IS NOT NULL")
     List<Object[]> findCreatedAndResolvedTimestamps();
 
-    @Query("SELECT COUNT(t) FROM Ticket t WHERE t.aiEscalated = false AND t.status = com.krish.supportapi.domain.enums.TicketStatus.RESOLVED")
-    long countAiResolvedTickets();
+    long countByAiEscalatedFalseAndStatus(TicketStatus status);
+
+    default long countAiResolvedTickets() {
+        return countByAiEscalatedFalseAndStatus(TicketStatus.RESOLVED);
+    }
 
     @Query(value = "SELECT nextval('public.ticket_number_seq')", nativeQuery = true)
     long nextTicketNumber();
+
+    @Query("SELECT t.category, COUNT(t) FROM Ticket t GROUP BY t.category")
+    List<Object[]> countByCategory();
+
+    @Query("SELECT t.priority, COUNT(t) FROM Ticket t GROUP BY t.priority")
+    List<Object[]> countByPriority();
 }

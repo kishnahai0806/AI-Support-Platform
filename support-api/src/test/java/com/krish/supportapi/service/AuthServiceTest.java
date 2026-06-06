@@ -7,6 +7,7 @@ import com.krish.supportapi.domain.dto.response.AuthResponse;
 import com.krish.supportapi.domain.entity.RefreshToken;
 import com.krish.supportapi.domain.entity.User;
 import com.krish.supportapi.domain.enums.UserRole;
+import com.krish.supportapi.exception.InvalidTokenException;
 import com.krish.supportapi.repository.RefreshTokenRepository;
 import com.krish.supportapi.repository.UserRepository;
 import com.krish.supportapi.security.JwtTokenProvider;
@@ -238,6 +239,22 @@ class AuthServiceTest {
             .isInstanceOf(RuntimeException.class);
 
         Mockito.verify(jwtTokenProvider, Mockito.never()).generateAccessToken(ArgumentMatchers.any(User.class));
+    }
+
+    @Test
+    void refreshToken_disabledUser_throwsInvalidTokenException() {
+        sampleUser.setActive(false);
+        RefreshToken currentRefreshToken = createRefreshToken(false, LocalDateTime.now().plusDays(7));
+
+        Mockito.when(refreshTokenRepository.findByTokenHash(refreshTokenString))
+            .thenReturn(Optional.of(currentRefreshToken));
+
+        assertThatThrownBy(() -> authService.refreshToken(refreshTokenString))
+            .isInstanceOf(InvalidTokenException.class)
+            .hasMessage("User account is disabled");
+
+        Mockito.verify(jwtTokenProvider, Mockito.never()).generateAccessToken(ArgumentMatchers.any(User.class));
+        Mockito.verify(refreshTokenRepository, Mockito.never()).save(ArgumentMatchers.any(RefreshToken.class));
     }
 
     private RefreshToken createRefreshToken(boolean revoked, LocalDateTime expiresAt) {

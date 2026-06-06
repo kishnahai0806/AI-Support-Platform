@@ -18,6 +18,8 @@ import org.springframework.web.filter.OncePerRequestFilter;
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
+    private static final String ACCESS_TOKEN_TYPE = "access";
+
     private final JwtTokenProvider jwtTokenProvider;
 
     private final UserDetailsService userDetailsService;
@@ -55,8 +57,20 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     }
 
                     UserDetails userDetails = userDetailsService.loadUserByUsername(username);
+                    if (!userDetails.isEnabled()) {
+                        SecurityContextHolder.clearContext();
+                        response.sendError(HttpServletResponse.SC_UNAUTHORIZED);
+                        return;
+                    }
 
                     if (jwtTokenProvider.isTokenValid(token, userDetails)) {
+                        String tokenType = jwtTokenProvider.extractTokenType(token);
+                        if (!ACCESS_TOKEN_TYPE.equals(tokenType)) {
+                            SecurityContextHolder.clearContext();
+                            response.sendError(HttpServletResponse.SC_UNAUTHORIZED);
+                            return;
+                        }
+
                         UsernamePasswordAuthenticationToken authenticationToken =
                             new UsernamePasswordAuthenticationToken(
                                 userDetails,

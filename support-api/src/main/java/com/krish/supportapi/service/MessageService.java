@@ -1,5 +1,6 @@
 package com.krish.supportapi.service;
 
+import com.krish.supportapi.config.CacheConstants;
 import com.krish.supportapi.domain.dto.request.CreateMessageRequest;
 import com.krish.supportapi.domain.dto.response.MessageResponse;
 import com.krish.supportapi.domain.entity.Ticket;
@@ -7,7 +8,9 @@ import com.krish.supportapi.domain.entity.TicketMessage;
 import com.krish.supportapi.domain.entity.User;
 import com.krish.supportapi.domain.enums.TicketStatus;
 import com.krish.supportapi.domain.enums.UserRole;
+import com.krish.supportapi.exception.TicketClosedException;
 import com.krish.supportapi.exception.TicketNotFoundException;
+import com.krish.supportapi.exception.UserNotFoundException;
 import com.krish.supportapi.repository.TicketMessageRepository;
 import com.krish.supportapi.repository.TicketRepository;
 import com.krish.supportapi.repository.UserRepository;
@@ -15,14 +18,13 @@ import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @Transactional
 public class MessageService {
-
-    private static final String ANALYTICS_CACHE_KEY = "analytics:overview";
 
     private final TicketRepository ticketRepository;
 
@@ -48,21 +50,21 @@ public class MessageService {
         Ticket ticket = ticketRepository.findById(ticketId)
             .orElseThrow(() -> new TicketNotFoundException("Ticket not found"));
         User sender = userRepository.findById(senderId)
-            .orElseThrow(() -> new TicketNotFoundException("Sender not found"));
+            .orElseThrow(() -> new UserNotFoundException("Sender not found"));
 
         if (sender.getRole() == UserRole.CUSTOMER
                 && !ticket.getCustomer().getId().equals(senderId)) {
-            throw new RuntimeException("Access denied: cannot send message to this ticket");
+            throw new AccessDeniedException("Access denied to this ticket");
         }
 
         if (ticket.getStatus() == TicketStatus.CLOSED) {
-            throw new RuntimeException("Cannot send message on a closed ticket");
+            throw new TicketClosedException("Cannot send message on a closed ticket");
         }
 
         if (sender.getRole() == UserRole.CUSTOMER && ticket.getStatus() == TicketStatus.RESOLVED) {
             ticket.setStatus(TicketStatus.OPEN);
             ticket.setResolvedAt(null);
-            stringRedisTemplate.delete(ANALYTICS_CACHE_KEY);
+            stringRedisTemplate.delete(CacheConstants.ANALYTICS_OVERVIEW_KEY);
         }
 
         TicketMessage message = TicketMessage.builder()
@@ -88,7 +90,7 @@ public class MessageService {
             .orElseThrow(() -> new TicketNotFoundException("Ticket not found"));
 
         if (role == UserRole.CUSTOMER && !ticket.getCustomer().getId().equals(requesterId)) {
-            throw new RuntimeException("Access denied");
+            throw new AccessDeniedException("Access denied to this ticket");
         }
 
         return ticketMessageRepository.findByTicketId(ticketId, pageable)

@@ -13,7 +13,6 @@ import com.krish.supportapi.repository.UserRepository;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
-import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -27,6 +26,9 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.redis.core.StringRedisTemplate;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @ExtendWith(MockitoExtension.class)
 class MessageServiceTest {
@@ -96,8 +98,8 @@ class MessageServiceTest {
             sampleCustomer.getId()
         );
 
-        Assertions.assertNotNull(response);
-        Assertions.assertEquals("Test message", response.getContent());
+        assertThat(response).isNotNull();
+        assertThat(response.getContent()).isEqualTo("Test message");
         Mockito.verify(ticketMessageRepository, Mockito.times(1))
             .save(ArgumentMatchers.any(TicketMessage.class));
     }
@@ -115,10 +117,8 @@ class MessageServiceTest {
         Mockito.when(ticketRepository.findById(sampleTicket.getId())).thenReturn(Optional.of(sampleTicket));
         Mockito.when(userRepository.findById(otherCustomer.getId())).thenReturn(Optional.of(otherCustomer));
 
-        Assertions.assertThrows(
-            RuntimeException.class,
-            () -> messageService.sendMessage(sampleTicket.getId(), createRequest, otherCustomer.getId())
-        );
+        assertThatThrownBy(() -> messageService.sendMessage(sampleTicket.getId(), createRequest, otherCustomer.getId()))
+            .isInstanceOf(RuntimeException.class);
 
         Mockito.verify(ticketMessageRepository, Mockito.never())
             .save(ArgumentMatchers.any(TicketMessage.class));
@@ -135,10 +135,8 @@ class MessageServiceTest {
         Mockito.when(ticketRepository.findById(closedTicket.getId())).thenReturn(Optional.of(closedTicket));
         Mockito.when(userRepository.findById(sampleCustomer.getId())).thenReturn(Optional.of(sampleCustomer));
 
-        Assertions.assertThrows(
-            RuntimeException.class,
-            () -> messageService.sendMessage(closedTicket.getId(), createRequest, sampleCustomer.getId())
-        );
+        assertThatThrownBy(() -> messageService.sendMessage(closedTicket.getId(), createRequest, sampleCustomer.getId()))
+            .isInstanceOf(RuntimeException.class);
 
         Mockito.verify(ticketMessageRepository, Mockito.never())
             .save(ArgumentMatchers.any(TicketMessage.class));
@@ -159,7 +157,7 @@ class MessageServiceTest {
 
         messageService.sendMessage(resolvedTicket.getId(), createRequest, sampleCustomer.getId());
 
-        Assertions.assertEquals(TicketStatus.OPEN, resolvedTicket.getStatus());
+        assertThat(resolvedTicket.getStatus()).isEqualTo(TicketStatus.OPEN);
         Mockito.verify(ticketMessageRepository, Mockito.times(1))
             .save(ArgumentMatchers.any(TicketMessage.class));
         Mockito.verify(stringRedisTemplate, Mockito.times(1)).delete("analytics:overview");
@@ -179,7 +177,7 @@ class MessageServiceTest {
             pageable
         );
 
-        Assertions.assertNotNull(response);
+        assertThat(response).isNotNull();
         Mockito.verify(ticketMessageRepository, Mockito.times(1))
             .findByTicketId(sampleTicket.getId(), pageable);
     }
@@ -188,14 +186,12 @@ class MessageServiceTest {
     void getMessages_asCustomer_otherTicket_throwsException() {
         Mockito.when(ticketRepository.findById(sampleTicket.getId())).thenReturn(Optional.of(sampleTicket));
 
-        Assertions.assertThrows(
-            RuntimeException.class,
-            () -> messageService.getMessages(
+        assertThatThrownBy(() -> messageService.getMessages(
                 sampleTicket.getId(),
                 UUID.randomUUID(),
                 UserRole.CUSTOMER,
                 PageRequest.of(0, 20)
-            )
-        );
+            ))
+            .isInstanceOf(RuntimeException.class);
     }
 }

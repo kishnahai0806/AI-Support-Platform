@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.krish.aiprocessor.domain.enums.TicketCategory;
 import com.krish.aiprocessor.domain.enums.TicketPriority;
 import com.krish.aiprocessor.event.TicketCreatedEvent;
+import com.krish.aiprocessor.exception.KafkaEventDeserializationException;
 import com.krish.aiprocessor.service.AiProcessingService;
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -17,6 +18,8 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
+
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @ExtendWith(MockitoExtension.class)
 class TicketCreatedConsumerTest {
@@ -67,14 +70,15 @@ class TicketCreatedConsumerTest {
     }
 
     @Test
-    void consume_invalidJson_skipsProcessing() throws Exception {
+    void consume_invalidJson_throwsForErrorHandler() throws Exception {
         Mockito.when(objectMapper.readValue(
             ArgumentMatchers.anyString(),
             ArgumentMatchers.eq(TicketCreatedEvent.class)
         )).thenThrow(new JsonProcessingException("Invalid JSON") {
         });
 
-        Assertions.assertDoesNotThrow(() -> consumer.consume("invalid"));
+        assertThatThrownBy(() -> consumer.consume("invalid"))
+            .isInstanceOf(KafkaEventDeserializationException.class);
 
         Mockito.verify(aiProcessingService, Mockito.never())
             .processTicket(ArgumentMatchers.any(TicketCreatedEvent.class));

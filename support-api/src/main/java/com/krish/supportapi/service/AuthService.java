@@ -163,6 +163,9 @@ public class AuthService {
         }
 
         User user = currentRefreshToken.getUser();
+        if (!user.isEnabled()) {
+            throw new InvalidTokenException("User account is disabled");
+        }
 
         currentRefreshToken.setRevoked(true);
         refreshTokenRepository.save(currentRefreshToken);

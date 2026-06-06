@@ -52,7 +52,7 @@ When a customer submits a support ticket, `support-api` persists it to PostgreSQ
 | Tracing | OpenTelemetry + Jaeger | Distributed trace correlation |
 | Metrics | Micrometer + Prometheus | Custom business metrics |
 | Dashboards | Grafana | Real-time operational monitoring |
-| Testing | JUnit 5 + Testcontainers | 82 tests, 80% coverage enforced |
+| Testing | JUnit 5 + Testcontainers | 73 tests, 80% coverage enforced |
 | CI/CD | GitHub Actions + Docker | Automated test, build, deploy pipeline |
 | Deployment | Oracle Cloud (ARM) | Always-free 4 OCPU 24GB production VM |
 
@@ -68,7 +68,7 @@ When a customer submits a support ticket, `support-api` persists it to PostgreSQ
 - **Custom Micrometer metrics** — `tickets.created.total`, `ticket.creation.duration`, `users.registered.total`, `users.login.total` (tagged by success/failure)
 - **Role-based access control** — `CUSTOMER`, `AGENT`, and `ADMIN` roles enforced at the Spring Security level
 - **Database migrations via Liquibase** — versioned schema management with a full changelog history; `ddl-auto: validate` in production
-- **82 automated tests** — unit tests with Mockito, integration tests with real Postgres via Testcontainers, Kafka consumer tests with EmbeddedKafka
+- **73 automated tests** — unit tests with Mockito, integration tests with real Postgres via Testcontainers, Kafka consumer tests with EmbeddedKafka
 - **JaCoCo coverage enforcement** — `mvn verify` fails if service-layer line coverage drops below 80%
 - **Dead letter queue (DLT) with retry logic** — Kafka consumer retries 3 times with 1-second backoff before sending failed events to the DLT, preventing message loss
 - **Production Docker Compose** with health checks, `restart: unless-stopped`, and non-root container users
@@ -190,7 +190,7 @@ mvnw.cmd verify      # Windows
 | `POST` | `/api/v1/auth/register` | None | Register new user |
 | `POST` | `/api/v1/auth/login` | None | Login and get JWT |
 | `POST` | `/api/v1/auth/refresh` | Bearer | Refresh access token |
-| `POST` | `/api/v1/tickets` | CUSTOMER | Create support ticket |
+| `POST` | `/api/v1/tickets` | Any | Create support ticket |
 | `GET` | `/api/v1/tickets` | Any | List tickets (role-filtered) |
 | `GET` | `/api/v1/tickets/{id}` | Any | Get ticket details |
 | `PATCH` | `/api/v1/tickets/{id}/status` | AGENT/ADMIN | Update ticket status |

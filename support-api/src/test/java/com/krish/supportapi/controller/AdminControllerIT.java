@@ -9,6 +9,7 @@ import com.krish.supportapi.domain.enums.TicketPriority;
 import com.krish.supportapi.domain.enums.UserRole;
 import com.krish.supportapi.repository.UserRepository;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,6 +34,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -94,6 +96,8 @@ class AdminControllerIT {
     @BeforeEach
     void setUp() throws Exception {
         when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(kafkaTemplate.send(anyString(), anyString(), anyString()))
+            .thenReturn(CompletableFuture.completedFuture(null));
 
         String customerEmail = uniqueEmail();
         String password = "password123";

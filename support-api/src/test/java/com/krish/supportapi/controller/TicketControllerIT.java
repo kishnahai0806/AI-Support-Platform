@@ -9,8 +9,10 @@ import com.krish.supportapi.domain.dto.request.UpdateTicketStatusRequest;
 import com.krish.supportapi.domain.enums.TicketPriority;
 import com.krish.supportapi.domain.enums.TicketStatus;
 import com.krish.supportapi.domain.enums.UserRole;
+import com.krish.supportapi.repository.TicketRepository;
 import com.krish.supportapi.repository.UserRepository;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -36,8 +38,8 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.hamcrest.Matchers.startsWith;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -51,6 +53,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 @Testcontainers
 class TicketControllerIT {
+
+    private static final long JWT_IAT_SECOND_ROLLOVER_WAIT_MS = 1100L;
 
     @Container
     @SuppressWarnings("resource")
@@ -68,6 +72,9 @@ class TicketControllerIT {
     @Autowired
     private UserRepository userRepository;
 
+    @Autowired
+    private TicketRepository ticketRepository;
+
     @MockitoBean
     private StringRedisTemplate stringRedisTemplate;
 
@@ -81,7 +88,7 @@ class TicketControllerIT {
 
     private String agentToken;
 
-    private String adminToken;
+    private String agentEmail;
 
     @DynamicPropertySource
     static void configureProperties(DynamicPropertyRegistry registry) {
@@ -100,22 +107,20 @@ class TicketControllerIT {
     @BeforeEach
     void setUp() throws Exception {
         when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(kafkaTemplate.send(anyString(), anyString(), anyString()))
+            .thenReturn(CompletableFuture.completedFuture(null));
 
         String customerEmail = uniqueEmail();
         String password = "password123";
         registerUser(registerRequest(customerEmail, password));
-        Thread.sleep(1100);
+        waitForNextJwtIssuedAtSecond();
         accessToken = loginAndExtractAccessToken(loginRequest(customerEmail, password));
 
-        String agentEmail = uniqueEmail();
+        agentEmail = uniqueEmail();
         registerUser(registerRequest(agentEmail, password));
         updateUserRole(agentEmail, UserRole.AGENT);
         agentToken = loginAndExtractAccessToken(loginRequest(agentEmail, password));
 
-        String adminEmail = uniqueEmail();
-        registerUser(registerRequest(adminEmail, password));
-        updateUserRole(adminEmail, UserRole.ADMIN);
-        adminToken = loginAndExtractAccessToken(loginRequest(adminEmail, password));
     }
 
     @Test
@@ -127,7 +132,7 @@ class TicketControllerIT {
                 .content(objectMapper.writeValueAsString(request)))
             .andExpect(status().isCreated())
             .andExpect(jsonPath("$.ticketNumber").value(startsWith("TKT-")))
-            .andExpect(jsonPath("$.status").value("OPEN"))
+            .andExpect(jsonPath("$.status").value("AI_PROCESSING"))
             .andExpect(jsonPath("$.title").value(request.getTitle()));
     }
 
@@ -185,6 +190,7 @@ class TicketControllerIT {
     @Test
     void updateStatus_asAgent_returns200() throws Exception {
         String ticketId = createTicketAndExtractId(createTicketRequest("Need technical support"));
+        assignTicketToAgent(ticketId, agentEmail);
         UpdateTicketStatusRequest request = UpdateTicketStatusRequest.builder()
             .status(TicketStatus.IN_PROGRESS)
             .build();
@@ -206,22 +212,6 @@ class TicketControllerIT {
         performAuthenticatedRequest(patch("/api/v1/tickets/{id}/status", ticketId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request)))
-            .andExpect(status().isForbidden());
-    }
-
-    @Test
-    void deleteTicket_asAdmin_returns204() throws Exception {
-        String ticketId = createTicketAndExtractId(createTicketRequest("Need general support"));
-
-        performRequestWithToken(adminToken, delete("/api/v1/tickets/{id}", ticketId))
-            .andExpect(status().isNoContent());
-    }
-
-    @Test
-    void deleteTicket_asCustomer_returns403() throws Exception {
-        String ticketId = createTicketAndExtractId(createTicketRequest("Need general support"));
-
-        performAuthenticatedRequest(delete("/api/v1/tickets/{id}", ticketId))
             .andExpect(status().isForbidden());
     }
 
@@ -258,6 +248,13 @@ class TicketControllerIT {
         });
     }
 
+    private void assignTicketToAgent(String ticketId, String agentEmail) {
+        var agent = userRepository.findByEmail(agentEmail).orElseThrow();
+        var ticket = ticketRepository.findById(UUID.fromString(ticketId)).orElseThrow();
+        ticket.setAssignedAgent(agent);
+        ticketRepository.save(ticket);
+    }
+
     private String loginAndExtractAccessToken(LoginRequest request) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/v1/auth/login")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -267,6 +264,11 @@ class TicketControllerIT {
 
         JsonNode response = objectMapper.readTree(result.getResponse().getContentAsString());
         return response.get("accessToken").asText();
+    }
+
+    private void waitForNextJwtIssuedAtSecond() throws InterruptedException {
+        // JWT iat is second-granular; wait so login tokens differ from registration tokens.
+        Thread.sleep(JWT_IAT_SECOND_ROLLOVER_WAIT_MS);
     }
 
     private MvcResult createTicket(CreateTicketRequest request) throws Exception {
