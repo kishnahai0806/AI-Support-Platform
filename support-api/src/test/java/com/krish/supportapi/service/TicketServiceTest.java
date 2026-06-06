@@ -105,6 +105,7 @@ class TicketServiceTest {
             .status(TicketStatus.OPEN)
             .priority(TicketPriority.MEDIUM)
             .customer(sampleCustomer)
+            .assignedAgent(sampleAgent)
             .build();
 
         createRequest = CreateTicketRequest.builder()
@@ -223,7 +224,12 @@ class TicketServiceTest {
         Mockito.when(ticketRepository.findById(sampleTicket.getId())).thenReturn(Optional.of(sampleTicket));
         Mockito.when(ticketRepository.save(sampleTicket)).thenReturn(sampleTicket);
 
-        TicketResponse response = ticketService.updateStatus(sampleTicket.getId(), request, sampleAgent.getId());
+        TicketResponse response = ticketService.updateStatus(
+            sampleTicket.getId(),
+            request,
+            sampleAgent.getId(),
+            UserRole.AGENT
+        );
 
         assertThat(response).isNotNull();
         assertThat(sampleTicket.getStatus()).isEqualTo(TicketStatus.RESOLVED);

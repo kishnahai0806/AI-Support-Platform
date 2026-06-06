@@ -57,6 +57,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     }
 
                     UserDetails userDetails = userDetailsService.loadUserByUsername(username);
+                    if (!userDetails.isEnabled()) {
+                        SecurityContextHolder.clearContext();
+                        response.sendError(HttpServletResponse.SC_UNAUTHORIZED);
+                        return;
+                    }
 
                     if (jwtTokenProvider.isTokenValid(token, userDetails)) {
                         String tokenType = jwtTokenProvider.extractTokenType(token);

@@ -9,6 +9,7 @@ import com.krish.supportapi.domain.dto.request.UpdateTicketStatusRequest;
 import com.krish.supportapi.domain.enums.TicketPriority;
 import com.krish.supportapi.domain.enums.TicketStatus;
 import com.krish.supportapi.domain.enums.UserRole;
+import com.krish.supportapi.repository.TicketRepository;
 import com.krish.supportapi.repository.UserRepository;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -71,6 +72,9 @@ class TicketControllerIT {
     @Autowired
     private UserRepository userRepository;
 
+    @Autowired
+    private TicketRepository ticketRepository;
+
     @MockitoBean
     private StringRedisTemplate stringRedisTemplate;
 
@@ -83,6 +87,8 @@ class TicketControllerIT {
     private String accessToken;
 
     private String agentToken;
+
+    private String agentEmail;
 
     @DynamicPropertySource
     static void configureProperties(DynamicPropertyRegistry registry) {
@@ -110,7 +116,7 @@ class TicketControllerIT {
         waitForNextJwtIssuedAtSecond();
         accessToken = loginAndExtractAccessToken(loginRequest(customerEmail, password));
 
-        String agentEmail = uniqueEmail();
+        agentEmail = uniqueEmail();
         registerUser(registerRequest(agentEmail, password));
         updateUserRole(agentEmail, UserRole.AGENT);
         agentToken = loginAndExtractAccessToken(loginRequest(agentEmail, password));
@@ -184,6 +190,7 @@ class TicketControllerIT {
     @Test
     void updateStatus_asAgent_returns200() throws Exception {
         String ticketId = createTicketAndExtractId(createTicketRequest("Need technical support"));
+        assignTicketToAgent(ticketId, agentEmail);
         UpdateTicketStatusRequest request = UpdateTicketStatusRequest.builder()
             .status(TicketStatus.IN_PROGRESS)
             .build();
@@ -239,6 +246,13 @@ class TicketControllerIT {
             user.setRole(role);
             userRepository.save(user);
         });
+    }
+
+    private void assignTicketToAgent(String ticketId, String agentEmail) {
+        var agent = userRepository.findByEmail(agentEmail).orElseThrow();
+        var ticket = ticketRepository.findById(UUID.fromString(ticketId)).orElseThrow();
+        ticket.setAssignedAgent(agent);
+        ticketRepository.save(ticket);
     }
 
     private String loginAndExtractAccessToken(LoginRequest request) throws Exception {

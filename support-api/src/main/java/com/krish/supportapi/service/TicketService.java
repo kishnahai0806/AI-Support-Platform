@@ -17,6 +17,7 @@ import com.krish.supportapi.domain.enums.UserRole;
 import com.krish.supportapi.event.TicketCreatedEvent;
 import com.krish.supportapi.exception.AgentNotFoundException;
 import com.krish.supportapi.exception.KafkaEventProcessingException;
+import com.krish.supportapi.exception.TicketClosedException;
 import com.krish.supportapi.exception.TicketNotFoundException;
 import com.krish.supportapi.exception.UserNotFoundException;
 import com.krish.supportapi.repository.TicketRepository;
@@ -182,10 +183,13 @@ public class TicketService {
     public TicketResponse updateStatus(
         UUID ticketId,
         UpdateTicketStatusRequest request,
-        UUID agentId
+        UUID requesterId,
+        UserRole requesterRole
     ) {
         Ticket ticket = ticketRepository.findById(ticketId)
             .orElseThrow(() -> new TicketNotFoundException("Ticket not found"));
+
+        enforceAssignedAgentMutationAllowed(ticket, requesterId, requesterRole);
 
         ticket.setStatus(request.getStatus());
 
@@ -203,7 +207,12 @@ public class TicketService {
         return mapToResponse(savedTicket);
     }
 
-    public TicketResponse assignTicket(UUID ticketId, AssignTicketRequest request) {
+    public TicketResponse assignTicket(
+        UUID ticketId,
+        AssignTicketRequest request,
+        UUID requesterId,
+        UserRole requesterRole
+    ) {
         Ticket ticket = ticketRepository.findById(ticketId)
             .orElseThrow(() -> new TicketNotFoundException("Ticket not found"));
         User agent = userRepository.findById(request.getAgentId())
@@ -212,6 +221,8 @@ public class TicketService {
         if (agent.getRole() != UserRole.AGENT) {
             throw new IllegalArgumentException("Assigned user is not an agent");
         }
+
+        enforceAssignmentAllowed(ticket, request.getAgentId(), requesterId, requesterRole);
 
         ticket.setAssignedAgent(agent);
 
@@ -225,9 +236,16 @@ public class TicketService {
         return mapToResponse(savedTicket);
     }
 
-    public TicketResponse updatePriority(UUID ticketId, TicketPriority priority) {
+    public TicketResponse updatePriority(
+        UUID ticketId,
+        TicketPriority priority,
+        UUID requesterId,
+        UserRole requesterRole
+    ) {
         Ticket ticket = ticketRepository.findById(ticketId)
             .orElseThrow(() -> new TicketNotFoundException("Ticket not found"));
+
+        enforceAssignedAgentMutationAllowed(ticket, requesterId, requesterRole);
 
         ticket.setPriority(priority);
 
@@ -243,6 +261,51 @@ public class TicketService {
 
         ticketRepository.delete(ticket);
         stringRedisTemplate.delete(CacheConstants.ANALYTICS_OVERVIEW_KEY);
+    }
+
+    private void enforceAssignedAgentMutationAllowed(
+        Ticket ticket,
+        UUID requesterId,
+        UserRole requesterRole
+    ) {
+        enforceTicketIsNotClosed(ticket);
+
+        if (requesterRole == UserRole.ADMIN) {
+            return;
+        }
+
+        if (requesterRole != UserRole.AGENT || ticket.getAssignedAgent() == null
+                || !ticket.getAssignedAgent().getId().equals(requesterId)) {
+            throw new AccessDeniedException("Access denied to this ticket");
+        }
+    }
+
+    private void enforceAssignmentAllowed(
+        Ticket ticket,
+        UUID targetAgentId,
+        UUID requesterId,
+        UserRole requesterRole
+    ) {
+        enforceTicketIsNotClosed(ticket);
+
+        if (requesterRole == UserRole.ADMIN) {
+            return;
+        }
+
+        if (requesterRole != UserRole.AGENT || !targetAgentId.equals(requesterId)) {
+            throw new AccessDeniedException("Access denied to this ticket");
+        }
+
+        if (ticket.getAssignedAgent() != null
+                && !ticket.getAssignedAgent().getId().equals(requesterId)) {
+            throw new AccessDeniedException("Access denied to this ticket");
+        }
+    }
+
+    private void enforceTicketIsNotClosed(Ticket ticket) {
+        if (ticket.getStatus() == TicketStatus.CLOSED) {
+            throw new TicketClosedException("Cannot modify a closed ticket");
+        }
     }
 
     private TicketResponse mapToResponse(Ticket ticket) {

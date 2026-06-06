@@ -106,7 +106,12 @@ public class TicketController {
         Authentication authentication
     ) {
         User currentUser = getCurrentUser(authentication);
-        TicketResponse response = ticketService.updateStatus(id, request, currentUser.getId());
+        TicketResponse response = ticketService.updateStatus(
+            id,
+            request,
+            currentUser.getId(),
+            currentUser.getRole()
+        );
         return ResponseEntity.ok(response);
     }
 
@@ -116,7 +121,13 @@ public class TicketController {
         @Valid @RequestBody AssignTicketRequest request,
         Authentication authentication
     ) {
-        TicketResponse response = ticketService.assignTicket(id, request);
+        User currentUser = getCurrentUser(authentication);
+        TicketResponse response = ticketService.assignTicket(
+            id,
+            request,
+            currentUser.getId(),
+            currentUser.getRole()
+        );
         return ResponseEntity.ok(response);
     }
 
@@ -126,7 +137,13 @@ public class TicketController {
         @Valid @RequestBody UpdateTicketPriorityRequest request,
         Authentication authentication
     ) {
-        TicketResponse response = ticketService.updatePriority(id, request.getPriority());
+        User currentUser = getCurrentUser(authentication);
+        TicketResponse response = ticketService.updatePriority(
+            id,
+            request.getPriority(),
+            currentUser.getId(),
+            currentUser.getRole()
+        );
         return ResponseEntity.ok(response);
     }
 
