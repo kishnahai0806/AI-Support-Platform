@@ -8,6 +8,8 @@ import com.krish.aiprocessor.domain.enums.TicketCategory;
 import com.krish.aiprocessor.event.TicketCreatedEvent;
 import com.krish.aiprocessor.event.TicketProcessedEvent;
 import com.krish.aiprocessor.repository.AiResponseAuditRepository;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.DistributionSummary;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import io.micrometer.core.instrument.Timer.Sample;
@@ -29,15 +31,17 @@ public class AiProcessingService {
 
     private static final String DEFAULT_FAILURE_MESSAGE = "AI classification failed or returned default";
 
-    private static final String AI_PROCESSING_TOTAL_METRIC = "ai.processing.total";
+    private static final String AI_PROCESSING_METRIC = "ai.processing";
 
     private static final String AI_PROCESSING_DURATION_METRIC = "ai.processing.duration";
 
+    private static final String AI_PROCESSING_DURATION_DESCRIPTION = "Duration of AI processing per ticket";
+
     private static final String AI_CONFIDENCE_SCORE_METRIC = "ai.confidence.score";
 
-    private static final String SUCCESS_TAG = "success";
+    private static final String AI_CONFIDENCE_SCORE_DESCRIPTION = "AI classification confidence score";
 
-    private static final String MODEL_TAG = "model";
+    private static final String SUCCESS_TAG = "success";
 
     private final OpenAiClientService openAiClientService;
 
@@ -52,6 +56,14 @@ public class AiProcessingService {
     private final String ticketProcessedTopic;
 
     private final MeterRegistry meterRegistry;
+
+    private final Counter aiProcessingSuccessCounter;
+
+    private final Counter aiProcessingFailureCounter;
+
+    private final Timer aiProcessingDurationTimer;
+
+    private final DistributionSummary aiConfidenceScoreSummary;
 
     public AiProcessingService(
         OpenAiClientService openAiClientService,
@@ -69,19 +81,26 @@ public class AiProcessingService {
         this.openAiProperties = openAiProperties;
         this.ticketProcessedTopic = ticketProcessedTopic;
         this.meterRegistry = meterRegistry;
+        this.aiProcessingSuccessCounter = Counter.builder(AI_PROCESSING_METRIC)
+            .tag(SUCCESS_TAG, Boolean.TRUE.toString())
+            .register(meterRegistry);
+        this.aiProcessingFailureCounter = Counter.builder(AI_PROCESSING_METRIC)
+            .tag(SUCCESS_TAG, Boolean.FALSE.toString())
+            .register(meterRegistry);
+        this.aiProcessingDurationTimer = Timer.builder(AI_PROCESSING_DURATION_METRIC)
+            .description(AI_PROCESSING_DURATION_DESCRIPTION)
+            .register(meterRegistry);
+        this.aiConfidenceScoreSummary = DistributionSummary.builder(AI_CONFIDENCE_SCORE_METRIC)
+            .description(AI_CONFIDENCE_SCORE_DESCRIPTION)
+            .register(meterRegistry);
     }
 
     public void processTicket(TicketCreatedEvent event) {
-        Sample sample = Timer.start(meterRegistry);
         long startTime = System.currentTimeMillis();
+        boolean processingSuccess = false;
 
         try {
-            OpenAiClientService.AiClassificationResult result =
-                openAiClientService.classifyTicket(
-                    event.getTitle(),
-                    event.getDescription(),
-                    event.getCategory()
-                );
+            OpenAiClientService.AiClassificationResult result = classifyTicket(event);
             long latencyMs = System.currentTimeMillis() - startTime;
             boolean success = isSuccessful(result);
             String errorMessage = success ? null : DEFAULT_FAILURE_MESSAGE;
@@ -96,9 +115,12 @@ public class AiProcessingService {
                 result.totalTokens()
             );
 
-            recordProcessingMetrics(success, result);
+            if (success) {
+                recordConfidenceScore(result);
+            }
 
             publishProcessedEvent(event, result, latencyMs, success, errorMessage);
+            processingSuccess = success;
 
             log.info(
                 "Ticket {} processed by AI: category={}, confidence={}, escalate={}, latency={}ms",
@@ -113,8 +135,21 @@ public class AiProcessingService {
                 event.getTicketId(), exception);
             throw exception;
         } finally {
-            sample.stop(Timer.builder(AI_PROCESSING_DURATION_METRIC)
-                .register(meterRegistry));
+            recordProcessingAttempt(processingSuccess);
+        }
+    }
+
+    private OpenAiClientService.AiClassificationResult classifyTicket(TicketCreatedEvent event) {
+        Sample sample = Timer.start(meterRegistry);
+
+        try {
+            return openAiClientService.classifyTicket(
+                event.getTitle(),
+                event.getDescription(),
+                event.getCategory()
+            );
+        } finally {
+            sample.stop(aiProcessingDurationTimer);
         }
     }
 
@@ -123,22 +158,13 @@ public class AiProcessingService {
             || result.confidenceScore().compareTo(DEFAULT_CONFIDENCE_SCORE) > 0;
     }
 
-    private void recordProcessingMetrics(
-        boolean success,
-        OpenAiClientService.AiClassificationResult result
-    ) {
-        meterRegistry.counter(
-            AI_PROCESSING_TOTAL_METRIC,
-            SUCCESS_TAG,
-            Boolean.toString(success),
-            MODEL_TAG,
-            openAiProperties.getModel()
-        ).increment();
+    private void recordProcessingAttempt(boolean success) {
+        Counter counter = success ? aiProcessingSuccessCounter : aiProcessingFailureCounter;
+        counter.increment();
+    }
 
-        if (success) {
-            meterRegistry.summary(AI_CONFIDENCE_SCORE_METRIC)
-                .record(result.confidenceScore().doubleValue());
-        }
+    private void recordConfidenceScore(OpenAiClientService.AiClassificationResult result) {
+        aiConfidenceScoreSummary.record(result.confidenceScore().doubleValue());
     }
 
     private void saveAudit(

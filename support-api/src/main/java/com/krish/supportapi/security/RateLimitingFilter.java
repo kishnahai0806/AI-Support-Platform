@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.krish.supportapi.exception.ApiError;
 import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.Bucket;
-import io.github.bucket4j.Refill;
 import jakarta.servlet.Filter;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -80,10 +79,10 @@ public class RateLimitingFilter implements Filter {
     }
 
     private Bucket createBucket() {
-        Bandwidth limit = Bandwidth.classic(
-            REQUEST_LIMIT,
-            Refill.greedy(REQUEST_LIMIT, REFILL_PERIOD)
-        );
+        Bandwidth limit = Bandwidth.builder()
+            .capacity(REQUEST_LIMIT)
+            .refillGreedy(REQUEST_LIMIT, REFILL_PERIOD)
+            .build();
         return Bucket.builder()
             .addLimit(limit)
             .build();

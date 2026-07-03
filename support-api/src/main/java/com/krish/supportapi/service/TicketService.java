@@ -23,6 +23,7 @@ import com.krish.supportapi.exception.UserNotFoundException;
 import com.krish.supportapi.repository.TicketRepository;
 import com.krish.supportapi.repository.TicketSpecification;
 import com.krish.supportapi.repository.UserRepository;
+import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import io.micrometer.core.instrument.Timer.Sample;
@@ -44,15 +45,11 @@ import org.springframework.transaction.annotation.Transactional;
 @Slf4j
 public class TicketService {
 
-    private static final String TICKETS_CREATED_TOTAL_METRIC = "tickets.created.total";
+    private static final String TICKETS_CREATED_METRIC = "tickets.created";
+
+    private static final String TICKETS_CREATED_DESCRIPTION = "Total number of tickets created";
 
     private static final String TICKET_CREATION_DURATION_METRIC = "ticket.creation.duration";
-
-    private static final String PRIORITY_TAG = "priority";
-
-    private static final String CATEGORY_TAG = "category";
-
-    private static final String UNSET_CATEGORY_TAG_VALUE = "NONE";
 
     private final TicketRepository ticketRepository;
 
@@ -67,6 +64,10 @@ public class TicketService {
     private final MeterRegistry meterRegistry;
 
     private final String ticketCreatedTopic;
+
+    private final Counter ticketsCreatedCounter;
+
+    private final Timer ticketCreationDurationTimer;
 
     public TicketService(
         TicketRepository ticketRepository,
@@ -84,6 +85,11 @@ public class TicketService {
         this.stringRedisTemplate = stringRedisTemplate;
         this.meterRegistry = meterRegistry;
         this.ticketCreatedTopic = ticketCreatedTopic;
+        this.ticketsCreatedCounter = Counter.builder(TICKETS_CREATED_METRIC)
+            .description(TICKETS_CREATED_DESCRIPTION)
+            .register(meterRegistry);
+        this.ticketCreationDurationTimer = Timer.builder(TICKET_CREATION_DURATION_METRIC)
+            .register(meterRegistry);
     }
 
     public TicketResponse createTicket(CreateTicketRequest request, UUID customerId) {
@@ -109,6 +115,7 @@ public class TicketService {
                 .build();
 
             Ticket savedTicket = ticketRepository.save(ticket);
+            ticketsCreatedCounter.increment();
 
             TicketCreatedEvent event = TicketCreatedEvent.builder()
                 .eventId(UUID.randomUUID())
@@ -138,21 +145,11 @@ public class TicketService {
                         log.debug("Published ticket.created event {} to {}", event.getEventId(), ticketCreatedTopic);
                     }
                 });
-            meterRegistry.counter(
-                TICKETS_CREATED_TOTAL_METRIC,
-                PRIORITY_TAG,
-                savedTicket.getPriority().name(),
-                CATEGORY_TAG,
-                savedTicket.getCategory() != null
-                    ? savedTicket.getCategory().name()
-                    : UNSET_CATEGORY_TAG_VALUE
-            ).increment();
             stringRedisTemplate.delete(CacheConstants.ANALYTICS_OVERVIEW_KEY);
 
             return mapToResponse(savedTicket);
         } finally {
-            sample.stop(Timer.builder(TICKET_CREATION_DURATION_METRIC)
-                .register(meterRegistry));
+            sample.stop(ticketCreationDurationTimer);
         }
     }
 
