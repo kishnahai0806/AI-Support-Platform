@@ -11,6 +11,30 @@
 
 ---
 
+## What This Is
+
+A production-grade backend platform that automates the first-touch triage of customer support tickets using AI. Customers submit tickets through a REST API, and within seconds an AI model has classified the issue by category, assigned a confidence score, and flagged it for escalation if needed — without any human involvement in that step.
+
+The engineering challenge is not the AI itself. The AI call to OpenAI takes 3-5 seconds and can fail. A naive implementation would make the customer wait for it, block the HTTP thread, and potentially time out. This platform solves that with an event-driven architecture: the ticket is saved and the HTTP response returns in milliseconds, while AI classification happens asynchronously through Kafka in the background.
+
+**Two independently deployable microservices:**
+
+`support-api` — the customer-facing HTTP layer. Handles authentication, ticket and message management, role-based access control, and analytics. When a ticket is created it publishes a `ticket.created` event to Kafka and returns `201` immediately.
+
+`ai-processor` — the background processing service. Consumes `ticket.created` events, calls OpenAI GPT-4o-mini to classify the ticket, persists a full audit trail with token counts and latency, then publishes a `ticket.processed` event back. `support-api` consumes that result and updates the ticket.
+
+The two services share no direct connection — they only know each other through Kafka topics. If `ai-processor` goes down, tickets still get created. If OpenAI is slow, no HTTP thread is blocked. Failed classifications retry 3 times with 1-second backoff before routing to a dead letter topic.
+
+**Built to demonstrate production backend engineering practices:**
+- Event-driven microservices with Kafka and proper DLT error handling
+- JWT authentication with Redis token blacklisting and refresh token rotation
+- Distributed tracing across both services via OpenTelemetry and Jaeger
+- 73 automated tests — unit tests, Testcontainers integration tests, EmbeddedKafka consumer tests
+- CI/CD pipeline from GitHub Actions to Oracle Cloud ARM via GHCR
+- Full observability stack: Prometheus metrics, Grafana dashboards, structured JSON logging
+
+---
+
 ## Architecture Overview
 
 When a customer submits a support ticket, `support-api` persists it to PostgreSQL and publishes a `ticket.created` event to Kafka. `ai-processor` consumes that event, calls OpenAI GPT-4o-mini to classify the ticket (category, confidence score, escalation flag), and publishes a `ticket.processed` event back. `support-api` then consumes that result and updates the ticket status and AI metadata. Both services emit OpenTelemetry traces and Micrometer metrics, collected by a shared observability stack. All communication between microservices is asynchronous — no direct HTTP calls between services.
