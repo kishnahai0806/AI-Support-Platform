@@ -58,7 +58,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "rate(tickets_created_total[5m])"
+          "expr": "rate(tickets_total[5m])"
         }
       ]
     },
