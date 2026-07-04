@@ -3,11 +3,6 @@ spring:
     url: ${SPRING_DATASOURCE_URL}
     username: ${SPRING_DATASOURCE_USERNAME}
     password: ${SPRING_DATASOURCE_PASSWORD}
-  data:
-    redis:
-      host: ${SPRING_DATA_REDIS_HOST}
-      port: ${SPRING_DATA_REDIS_PORT}
-      password: ${SPRING_DATA_REDIS_PASSWORD}
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS}
     properties:
@@ -17,6 +12,8 @@ spring:
         org.apache.kafka.common.security.scram.ScramLoginModule required
         username="${KAFKA_SASL_USERNAME}"
         password="${KAFKA_SASL_PASSWORD}";
+      ssl.truststore.type: PEM
+      ssl.truststore.certificates: ${KAFKA_CA_CERT}
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
@@ -35,7 +32,5 @@ management:
     sampling:
       probability: 0.0
 
-jwt:
-  secret: ${JWT_SECRET}
-  access-token-expiry-ms: ${JWT_ACCESS_TOKEN_EXPIRY_MS:900000}
-  refresh-token-expiry-ms: ${JWT_REFRESH_TOKEN_EXPIRY_MS:604800000}
+openai:
+  api-key: ${OPENAI_API_KEY}
