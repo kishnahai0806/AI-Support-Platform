@@ -25,15 +25,16 @@ spring:
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       auto-offset-reset: earliest
       enable-auto-commit: false
+  # No Jaeger on Railway — disable OTLP exporter entirely
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.actuate.autoconfigure.tracing.otlp.OtlpAutoConfiguration
 
 management:
-  otlp:
-    tracing:
-      endpoint: ""
   tracing:
     sampling:
       probability: 0.0
-      
+
 jwt:
   secret: ${JWT_SECRET}
   access-token-expiry-ms: ${JWT_ACCESS_TOKEN_EXPIRY_MS:900000}
