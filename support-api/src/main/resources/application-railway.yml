@@ -27,12 +27,18 @@ spring:
       enable-auto-commit: false
 
 management:
-  otlp:
-    tracing:
-      endpoint: ""
   tracing:
     sampling:
       probability: 0.0
+  # OTLP exporter is excluded on Railway because there is no Jaeger or
+  # OpenTelemetry collector deployed in this environment. Sampling is set
+  # to 0.0 so no traces are attempted. Re-enable by removing the exclusion
+  # and setting a valid OTEL_EXPORTER_OTLP_ENDPOINT when a collector exists.
+
+spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.actuate.autoconfigure.tracing.otlp.OtlpAutoConfiguration
 
 jwt:
   secret: ${JWT_SECRET}
