@@ -17,6 +17,8 @@ spring:
         org.apache.kafka.common.security.scram.ScramLoginModule required
         username="${KAFKA_SASL_USERNAME}"
         password="${KAFKA_SASL_PASSWORD}";
+      ssl.truststore.type: PEM
+      ssl.truststore.certificates: ${KAFKA_CA_CERT}
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
