@@ -14,7 +14,7 @@ spring:
       security.protocol: SASL_SSL
       sasl.mechanism: SCRAM-SHA-256
       sasl.jaas.config: >
-        org.apache.kafka.common.security.scram.ScramLoginModule required
+        org.apache.kafka.common.services.scram.ScramLoginModule required
         username="${KAFKA_SASL_USERNAME}"
         password="${KAFKA_SASL_PASSWORD}";
     producer:
@@ -25,20 +25,15 @@ spring:
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       auto-offset-reset: earliest
       enable-auto-commit: false
+  # No Jaeger on Railway — disable OTLP exporter entirely
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.actuate.autoconfigure.tracing.otlp.OtlpAutoConfiguration
 
 management:
   tracing:
     sampling:
       probability: 0.0
-  # OTLP exporter is excluded on Railway because there is no Jaeger or
-  # OpenTelemetry collector deployed in this environment. Sampling is set
-  # to 0.0 so no traces are attempted. Re-enable by removing the exclusion
-  # and setting a valid OTEL_EXPORTER_OTLP_ENDPOINT when a collector exists.
-
-spring:
-  autoconfigure:
-    exclude:
-      - org.springframework.boot.actuate.autoconfigure.tracing.otlp.OtlpAutoConfiguration
 
 jwt:
   secret: ${JWT_SECRET}
