@@ -1,50 +1,77 @@
 spring:
+  application:
+    name: support-api
   datasource:
-    url: ${SPRING_DATASOURCE_URL}
+    url: jdbc:postgresql://postgres:5432/support_db
     username: ${SPRING_DATASOURCE_USERNAME}
     password: ${SPRING_DATASOURCE_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    show-sql: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
   data:
     redis:
-      host: ${SPRING_DATA_REDIS_HOST}
-      port: ${SPRING_DATA_REDIS_PORT}
-      password: ${SPRING_DATA_REDIS_PASSWORD}
+      host: ${SPRING_REDIS_HOST}
+      port: ${SPRING_REDIS_PORT}
   kafka:
-    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS}
-    properties:
-      security.protocol: SASL_SSL
-      sasl.mechanism: SCRAM-SHA-256
-      sasl.jaas.config: >
-        org.apache.kafka.common.security.scram.ScramLoginModule required
-        username="${KAFKA_SASL_USERNAME}"
-        password="${KAFKA_SASL_PASSWORD}";
-      ssl.endpoint.identification.algorithm: ""
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:kafka:29092}
+    consumer:
+      group-id: support-api-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
-    consumer:
-      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      auto-offset-reset: earliest
-      enable-auto-commit: false
-  autoconfigure:
-    exclude:
-      - org.springframework.boot.actuate.autoconfigure.tracing.otlp.OtlpAutoConfiguration
+    topics:
+      ticket-created: ticket.created
+      ticket-processed: ticket.processed
+  liquibase:
+    enabled: true
+    change-log: classpath:db/changelog/master.xml
+
+server:
+  port: 8080
 
 management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    prometheus:
+      access: unrestricted
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
   tracing:
     sampling:
-      probability: 0.0
-  endpoint:
-    health:
-      show-details: always
+      probability: 1.0
+
+otel:
+  exporter:
+    otlp:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4317}
+  resource:
+    attributes:
+      service.name: support-api
 
 logging:
   level:
-    com.krish: DEBUG
-    org.springframework.security: DEBUG
-    org.springframework.data.redis: DEBUG
+    root: INFO
+    com.krish.supportapi: INFO
+  pattern:
+    console: '{"ts":"%d{yyyy-MM-dd HH:mm:ss.SSS}","lvl":"%p","svc":"support-api","trace":"%X{traceId:-}","span":"%X{spanId:-}","reqId":"%X{requestId:-}","method":"%X{method:-}","path":"%X{path:-}","log":"%logger{36}","msg":"%replace(%message){''\"'',''\\\"''}"}%n'
 
 jwt:
   secret: ${JWT_SECRET}
-  access-token-expiry-ms: ${JWT_ACCESS_TOKEN_EXPIRY_MS:900000}
-  refresh-token-expiry-ms: ${JWT_REFRESH_TOKEN_EXPIRY_MS:604800000}
+  access-token-expiry-ms: ${JWT_ACCESS_EXPIRY_MS}
+  refresh-token-expiry-ms: ${JWT_REFRESH_EXPIRY_MS}
