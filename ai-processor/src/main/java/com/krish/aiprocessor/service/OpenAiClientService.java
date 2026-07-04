@@ -97,7 +97,7 @@ public class OpenAiClientService {
     ) {
         return Map.of(
             "model", openAiProperties.getModel(),
-            "max_completion_tokens", openAiProperties.getMaxTokens(),
+            "temperature", openAiProperties.getTemperature(),
             "messages", List.of(
                 Map.of(
                     "role", "system",
