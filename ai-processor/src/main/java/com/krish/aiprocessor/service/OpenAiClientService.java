@@ -10,6 +10,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 @Service
 @Slf4j
@@ -84,6 +85,14 @@ public class OpenAiClientService {
                 tokenUsage[1],
                 tokenUsage[2]
             );
+        } catch (WebClientResponseException exception) {
+            log.error(
+                "OpenAI request failed. status={}, body={}",
+                exception.getStatusCode(),
+                exception.getResponseBodyAsString(),
+                exception
+            );
+            return defaultResult();
         } catch (Exception exception) {
             log.error("Failed to classify ticket with OpenAI", exception);
             return defaultResult();
