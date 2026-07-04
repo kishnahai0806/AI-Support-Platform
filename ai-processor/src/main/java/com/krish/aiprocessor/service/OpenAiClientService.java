@@ -89,8 +89,7 @@ public class OpenAiClientService {
             log.error(
                 "OpenAI request failed. status={}, body={}",
                 exception.getStatusCode(),
-                exception.getResponseBodyAsString(),
-                exception
+                exception.getResponseBodyAsString()
             );
             return defaultResult();
         } catch (Exception exception) {
