@@ -1,27 +1,51 @@
 spring:
+  application:
+    name: ai-processor
   datasource:
-    url: ${SPRING_DATASOURCE_URL}
+    url: jdbc:postgresql://localhost:5433/support_db
     username: ${SPRING_DATASOURCE_USERNAME}
     password: ${SPRING_DATASOURCE_PASSWORD}
   kafka:
-    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS}
-    properties:
-      security.protocol: SASL_SSL
-      sasl.mechanism: SCRAM-SHA-256
-      sasl.jaas.config: >
-        org.apache.kafka.common.security.scram.ScramLoginModule required
-        username="${KAFKA_SASL_USERNAME}"
-        password="${KAFKA_SASL_PASSWORD}";
-      ssl.truststore.type: PEM
-      ssl.truststore.certificates: ${KAFKA_CA_CERT}
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    topics:
+      ticket-created: ticket.created
+      ticket-processed: ticket.processed
     consumer:
+      group-id: ai-processor-group
       auto-offset-reset: earliest
       enable-auto-commit: false
-  autoconfigure:
-    exclude:
-      - org.springframework.boot.actuate.autoconfigure.tracing.otlp.OtlpAutoConfiguration
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
 
 management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  metrics:
+    tags:
+      application: ${spring.application.name}
   tracing:
     sampling:
-      probability: 0.0
+      probability: 1.0
+
+otel:
+  exporter:
+    otlp:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4317}
+  resource:
+    attributes:
+      service.name: ai-processor
+
+openai:
+  api-key: ${OPENAI_API_KEY}
+  base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
+  model: ${OPENAI_MODEL:gpt-4o-mini}
+
+logging:
+  level:
+    root: INFO
+    com.krish.aiprocessor: INFO
