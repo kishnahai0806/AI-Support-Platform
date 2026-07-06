@@ -2,7 +2,7 @@ spring:
   application:
     name: support-api
   datasource:
-    url: jdbc:postgresql://postgres:5432/support_db
+    url: jdbc:postgresql://localhost:5433/support_db
     username: ${SPRING_DATASOURCE_USERNAME}
     password: ${SPRING_DATASOURCE_PASSWORD}
     driver-class-name: org.postgresql.Driver
@@ -15,21 +15,22 @@ spring:
         dialect: org.hibernate.dialect.PostgreSQLDialect
   data:
     redis:
-      host: ${SPRING_REDIS_HOST}
-      port: ${SPRING_REDIS_PORT}
+      host: ${SPRING_REDIS_HOST:localhost}
+      port: ${SPRING_REDIS_PORT:6379}
   kafka:
-    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:kafka:29092}
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    topics:
+      ticket-created: ticket.created
+      ticket-processed: ticket.processed
     consumer:
       group-id: support-api-group
       auto-offset-reset: earliest
+      enable-auto-commit: false
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
-    topics:
-      ticket-created: ticket.created
-      ticket-processed: ticket.processed
   liquibase:
     enabled: true
     change-log: classpath:db/changelog/master.xml
@@ -45,6 +46,8 @@ management:
   endpoint:
     prometheus:
       access: unrestricted
+    health:
+      show-details: never
   prometheus:
     metrics:
       export:
@@ -73,5 +76,5 @@ logging:
 
 jwt:
   secret: ${JWT_SECRET}
-  access-token-expiry-ms: ${JWT_ACCESS_EXPIRY_MS}
-  refresh-token-expiry-ms: ${JWT_REFRESH_EXPIRY_MS}
+  access-token-expiry-ms: ${JWT_ACCESS_EXPIRY_MS:900000}
+  refresh-token-expiry-ms: ${JWT_REFRESH_EXPIRY_MS:604800000}
