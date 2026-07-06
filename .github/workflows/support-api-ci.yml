@@ -81,20 +81,4 @@ jobs:
           context: ./support-api
           push: true
           tags: ghcr.io/${{ github.repository_owner }}/support-api:latest
-
-  deploy:
-    needs: build-and-push
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    steps:
-      - name: Deploy to Oracle Cloud
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.ORACLE_HOST }}
-          username: ubuntu
-          key: ${{ secrets.ORACLE_SSH_KEY }}
-          script: |
-            cd /opt/ai-support-platform
-            docker compose pull support-api
-            docker compose up -d support-api
-            docker system prune -f
+          # Railway auto-deploys from GHCR on image push
