@@ -321,6 +321,8 @@ Both services expose metrics, traces, and structured logs out of the box.
 
 **Alerts** — Prometheus alerting rules are defined in `./prometheus/alerts.yml` and routed through Alertmanager on port `9093`.
 
+> **Local only:** The full observability stack (Prometheus, Grafana, Jaeger) runs locally via Docker Compose. The live Railway deployment disables OTLP tracing — structured JSON logging is still available via Railway's log viewer.
+
 ---
 
 ## Screenshots
