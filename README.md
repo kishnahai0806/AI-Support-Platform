@@ -3,11 +3,14 @@
 > A distributed AI-powered customer support platform built with Spring Boot microservices, Apache Kafka, and OpenAI
 
 [![Java](https://img.shields.io/badge/Java-21-ED8B00?style=flat-square&logo=openjdk&logoColor=white)](https://openjdk.org/projects/jdk/21/)
-[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5-6DB33F?style=flat-square&logo=springboot&logoColor=white)](https://spring.io/projects/spring-boot)
+[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5.14-6DB33F?style=flat-square&logo=springboot&logoColor=white)](https://spring.io/projects/spring-boot)
 [![Apache Kafka](https://img.shields.io/badge/Apache%20Kafka-7.6-231F20?style=flat-square&logo=apachekafka&logoColor=white)](https://kafka.apache.org/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?style=flat-square&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=white)](https://www.docker.com/)
 [![CI/CD](https://img.shields.io/badge/CI%2FCD-GitHub%20Actions-2088FF?style=flat-square&logo=githubactions&logoColor=white)](https://github.com/features/actions)
+
+**Live API:** https://support-api-production-db67.up.railway.app
+**Swagger UI:** https://support-api-production-db67.up.railway.app/swagger-ui/index.html
 
 ---
 
@@ -29,8 +32,8 @@ The two services share no direct connection — they only know each other throug
 - Event-driven microservices with Kafka and proper DLT error handling
 - JWT authentication with Redis token blacklisting and refresh token rotation
 - Distributed tracing across both services via OpenTelemetry and Jaeger
-- 73 automated tests — unit tests, Testcontainers integration tests, EmbeddedKafka consumer tests
-- CI/CD pipeline from GitHub Actions to Oracle Cloud ARM via GHCR
+- 74 automated tests — unit tests, Testcontainers integration tests, EmbeddedKafka consumer tests
+- CI/CD pipeline from GitHub Actions to GHCR, with Railway auto-deploy on push to main
 - Full observability stack: Prometheus metrics, Grafana dashboards, structured JSON logging
 
 ---
@@ -67,7 +70,7 @@ When a customer submits a support ticket, `support-api` persists it to PostgreSQ
 | Category | Technology | Purpose |
 |----------|------------|---------|
 | Language | Java 21 | Virtual threads, records, pattern matching |
-| Framework | Spring Boot 3.5 | Auto-configuration, production-ready |
+| Framework | Spring Boot 3.5.14 | Auto-configuration, production-ready |
 | Security | Spring Security 6 + JWT | Stateless authentication |
 | Messaging | Apache Kafka | Async event-driven communication |
 | Database | PostgreSQL 16 | Primary data store with Liquibase migrations |
@@ -76,26 +79,39 @@ When a customer submits a support ticket, `support-api` persists it to PostgreSQ
 | Tracing | OpenTelemetry + Jaeger | Distributed trace correlation |
 | Metrics | Micrometer + Prometheus | Custom business metrics |
 | Dashboards | Grafana | Real-time operational monitoring |
-| Testing | JUnit 5 + Testcontainers | 73 tests, 80% coverage enforced |
+| Testing | JUnit 5 + Testcontainers | 74 tests, 80% coverage enforced |
 | CI/CD | GitHub Actions + Docker | Automated test, build, deploy pipeline |
-| Deployment | Oracle Cloud (ARM) | Always-free 4 OCPU 24GB production VM |
+| Deployment | Railway + Aiven | Public API, background worker, managed PostgreSQL, managed Kafka |
 
 ---
 
-## Key Features
+## Key Engineering Decisions
 
-- **JWT Authentication** with refresh token rotation and Redis-backed token blacklisting — access tokens expire in 15 minutes, refresh tokens in 7 days
-- **Event-driven AI processing** — tickets classified asynchronously via Kafka; `support-api` is never blocked waiting for OpenAI
-- **OpenAI integration** with configurable retry logic (3 retries, 30s timeout, temperature 0.3), confidence scoring stored on every ticket, and a full audit trail via `AiResponseAudit`
-- **Distributed tracing** — trace IDs propagated across both microservices via OTel with 100% sampling; correlate a ticket creation request all the way through AI processing in Jaeger
-- **Structured JSON logging** — every log line includes `traceId`, `spanId`, `requestId`, `method`, and `path` fields for machine-readable log correlation
-- **Custom Micrometer metrics** — `tickets.created.total`, `ticket.creation.duration`, `users.registered.total`, `users.login.total` (tagged by success/failure)
-- **Role-based access control** — `CUSTOMER`, `AGENT`, and `ADMIN` roles enforced at the Spring Security level
-- **Database migrations via Liquibase** — versioned schema management with a full changelog history; `ddl-auto: validate` in production
-- **73 automated tests** — unit tests with Mockito, integration tests with real Postgres via Testcontainers, Kafka consumer tests with EmbeddedKafka
-- **JaCoCo coverage enforcement** — `mvn verify` fails if service-layer line coverage drops below 80%
-- **Dead letter queue (DLT) with retry logic** — Kafka consumer retries 3 times with 1-second backoff before sending failed events to the DLT, preventing message loss
-- **Production Docker Compose** with health checks, `restart: unless-stopped`, and non-root container users
+**Decision 1 — Async AI processing via Kafka**
+
+OpenAI calls take 3-5 seconds and can fail. A synchronous implementation blocks the HTTP thread and forces the customer to wait. Publishing to Kafka decouples ticket creation from AI processing: `support-api` returns `201` in milliseconds while `ai-processor` classifies in the background.
+
+**Result:** ticket creation P99 latency is under 50ms regardless of OpenAI response time.
+
+**Decision 2 — Dead letter topic with 3-retry backoff**
+
+Kafka consumer failures without a DLT silently lose messages. A naive infinite retry loop blocks the consumer partition. The 3-retry + 1-second backoff + DLT pattern gives transient failures a chance to recover while ensuring permanent failures are captured and inspectable rather than lost.
+
+**Decision 3 — Redis token blacklisting over stateful sessions**
+
+Stateful sessions require sticky routing or shared session storage, and both add operational complexity. JWT with Redis blacklisting gives stateless scalability while still supporting immediate token revocation on logout. SHA-256 hashing of tokens before storing them as Redis keys prevents raw token exposure in Redis logs.
+
+**Decision 4 — Shared Kafka topics, no direct HTTP between services**
+
+Direct HTTP calls between microservices create tight coupling. If `ai-processor` is down, ticket creation should not fail. Topic-based communication lets each service evolve independently, so `ai-processor` can be redeployed, scaled, or replaced without `support-api` knowing anything changed.
+
+**Decision 5 — Full audit trail in AiResponseAudit**
+
+AI classifications are probabilistic and can be wrong. Without an audit trail there is no way to debug a misclassification, measure model drift, or replay failed events. Every OpenAI response stores the raw prompt, completion, token counts, latency, and confidence score, making the AI behavior fully inspectable.
+
+**Decision 6 — Distributed tracing across both services**
+
+With two services communicating via Kafka, a single customer request spans multiple process boundaries. Without trace propagation, correlating a slow ticket classification to a specific OpenAI call is impossible. OTel trace IDs are injected into Kafka message headers so Jaeger shows the full request lifecycle, from HTTP ingestion through Kafka publish to AI processing, as a single trace.
 
 ---
 
@@ -240,7 +256,17 @@ Full interactive documentation is available at `/swagger-ui.html` when the servi
 | `KAFKA_BOOTSTRAP_SERVERS` | Kafka broker address | `localhost:9092` |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | OpenTelemetry collector endpoint | `http://localhost:4317` |
 
-For production, all secrets are stored as GitHub Actions repository secrets and injected at deploy time.
+For production, runtime secrets are stored in Railway service variables and Aiven credentials. GitHub Actions uses repository secrets for GHCR publishing.
+
+---
+
+## Deployment
+
+The platform is deployed on Railway:
+- support-api: https://support-api-production-db67.up.railway.app
+- ai-processor: deployed as a background service (no public URL)
+- PostgreSQL: Railway managed database
+- Kafka: Aiven managed Kafka with SASL_SSL
 
 ---
 
@@ -265,9 +291,9 @@ push / PR to main
          │ needs   Only runs on push to main (not PRs).
          ▼
   ┌─────────────┐
-  │  Job 3      │  SSH into Oracle Cloud VM. Pulls new image,
-  │   deploy    │  restarts container via docker compose.
-  └─────────────┘  Requires ORACLE_HOST and ORACLE_SSH_KEY secrets.
+  │  Job 3      │  Railway auto-deploys from GHCR
+  │   deploy    │  on push to main.
+  └─────────────┘
 ```
 
 Docker images are published to:
